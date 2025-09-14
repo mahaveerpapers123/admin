@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import "./Orders.css";
 import AdminNavbar from "./AdminNavbar";
 
-const API_BASE = "https://mahaveerbe.vercel.app"; 
+const API_BASE = "https://mahaveerpapersbe.vercel.app"; 
 
 function Orders() {
   const [orders, setOrders] = useState([]);

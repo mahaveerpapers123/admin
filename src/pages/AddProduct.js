@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import './AddProduct.css';
 import AdminNavbar from './AdminNavbar';
 
-const API_BASE = 'https://mahaveerbe.vercel.app';
+const API_BASE = 'https://mahaveerpapersbe.vercel.app';
 
 function AddProduct() {
   const [formData, setFormData] = useState({
