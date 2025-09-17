@@ -2,11 +2,15 @@ import React, { useEffect, useState } from "react";
 import "./Orders.css";
 import AdminNavbar from "./AdminNavbar";
 
-const API_BASE = "https://mahaveerpapersbe.vercel.app"; 
+const API_BASE = "https://mahaveerpapersbe.vercel.app";
 
 function Orders() {
   const [orders, setOrders] = useState([]);
   const [error, setError] = useState("");
+  const [selectedOrder, setSelectedOrder] = useState(null);
+  const [decisions, setDecisions] = useState({});
+  const [search, setSearch] = useState("");
+  const [onlyPending, setOnlyPending] = useState(false);
 
   useEffect(() => {
     const fetchOrders = async () => {
@@ -14,7 +18,6 @@ function Orders() {
         const res = await fetch(`${API_BASE}/api/orders`, {
           headers: { Accept: "application/json" },
         });
-
         const text = await res.text();
         let data = null;
         try {
@@ -22,14 +25,11 @@ function Orders() {
         } catch {
           data = null;
         }
-
         if (!res.ok) {
           setError((data && (data.error || data.message)) || "Failed to fetch orders");
           return;
         }
-
         const ordersArray = Array.isArray(data) ? data : data?.orders || [];
-
         const normalized = ordersArray.map((order) => {
           let items = [];
           if (Array.isArray(order.items)) {
@@ -42,7 +42,6 @@ function Orders() {
               items = [];
             }
           }
-
           const itemsNorm = items.map((it) => ({
             product_name: it.product_name ?? it.name ?? "",
             image_url:
@@ -69,16 +68,13 @@ function Orders() {
                 ? Math.round(Number(it.price) * 100)
                 : 0,
           }));
-
           return { ...order, items: itemsNorm };
         });
-
         setOrders(normalized);
       } catch (err) {
         setError("Failed to fetch orders: " + (err?.message || "Unknown error"));
       }
     };
-
     fetchOrders();
   }, []);
 
@@ -92,11 +88,99 @@ function Orders() {
     return `₹${(v / 100).toFixed(2)}`;
   };
 
+  const getCustomerType = (order) => {
+    if (typeof order.is_b2b === "boolean") return order.is_b2b ? "B2B" : "B2C";
+    if (typeof order.customer_type === "string") return order.customer_type.toUpperCase();
+    if (typeof order.type === "string") return order.type.toUpperCase();
+    if (typeof order.user_type === "string") return order.user_type.toUpperCase();
+    const email = order.email || "";
+    const domain = email.split("@")[1] || "";
+    if (domain && !["gmail.com", "yahoo.com", "outlook.com", "hotmail.com", "icloud.com", "proton.me"].includes(domain.toLowerCase())) {
+      return "B2B";
+    }
+    return "B2C";
+  };
+
+  const extractAddress = (order) => {
+    const a =
+      order.shipping_address ||
+      order.address ||
+      order.shipping ||
+      order.customer_address ||
+      {};
+    const flat = {
+      name: a.name || order.name || order.customer_name || "",
+      line1: a.line1 || a.address1 || a.address_line1 || order.address_line1 || "",
+      line2: a.line2 || a.address2 || a.address_line2 || order.address_line2 || "",
+      city: a.city || order.city || "",
+      state: a.state || a.region || order.state || "",
+      postal_code: a.postal_code || a.zip || a.pincode || order.postal_code || order.zip || "",
+      country: a.country || order.country || "",
+      phone: a.phone || order.phone || "",
+    };
+    return flat;
+  };
+
+  const formatAddress = (addr) => {
+    const parts = [
+      addr.name,
+      addr.line1,
+      addr.line2,
+      [addr.city, addr.state, addr.postal_code].filter(Boolean).join(" "),
+      addr.country,
+    ].filter(Boolean);
+    return parts.join(", ");
+  };
+
+  const handleRowClick = (order) => {
+    setSelectedOrder(order);
+  };
+
+  const closeModal = () => setSelectedOrder(null);
+
+  const acceptOrder = (id) => {
+    setDecisions((d) => ({ ...d, [id]: "Accepted" }));
+    setSelectedOrder((o) => (o ? { ...o, local_status: "Accepted" } : o));
+  };
+
+  const declineOrder = (id) => {
+    setDecisions((d) => ({ ...d, [id]: "Declined" }));
+    setSelectedOrder((o) => (o ? { ...o, local_status: "Declined" } : o));
+  };
+
+  const filtered = orders.filter((o) => {
+    const q = search.trim().toLowerCase();
+    const matches =
+      !q ||
+      (o.id + "").toLowerCase().includes(q) ||
+      (o.email || "").toLowerCase().includes(q) ||
+      (o.payment_status || "").toLowerCase().includes(q) ||
+      o.items.some((it) => (it.product_name || "").toLowerCase().includes(q));
+    const pending = decisions[o.id] ? decisions[o.id] === "Accepted" ? false : !onlyPending : true;
+    return matches && (onlyPending ? !decisions[o.id] : pending);
+  });
+
   return (
     <div className="orders-root">
       <AdminNavbar />
       <div className="orders-container">
         <h2 className="table-title">Orders</h2>
+        <div className="orders-toolbar">
+          <input
+            className="orders-search"
+            placeholder="Search by Order ID, email, product, payment status"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          <label className="orders-toggle">
+            <input
+              type="checkbox"
+              checked={onlyPending}
+              onChange={(e) => setOnlyPending(e.target.checked)}
+            />
+            Show only pending
+          </label>
+        </div>
         {error && <div className="error-message">{error}</div>}
         <div className="glass-table">
           <table>
@@ -111,17 +195,16 @@ function Orders() {
                 <th>Item Price</th>
                 <th>Order Total</th>
                 <th>Payment</th>
-                {/*<th>Status</th>
-                <th>Fulfillment</th> */}
+                <th>Decision</th>
               </tr>
             </thead>
             <tbody>
-              {orders.length > 0 ? (
-                orders.flatMap((order) => {
+              {filtered.length > 0 ? (
+                filtered.flatMap((order) => {
                   const items = order.items || [];
                   if (items.length === 0) {
                     return (
-                      <tr key={`${order.id}-empty`}>
+                      <tr key={`${order.id}-empty`} className="order-row" onClick={() => handleRowClick(order)}>
                         <td>{order.id}</td>
                         <td>{order.created_at ? new Date(order.created_at).toLocaleString() : ""}</td>
                         <td>{order.email || ""}</td>
@@ -129,13 +212,16 @@ function Orders() {
                         <td></td>
                         <td>{toMoney(order.total_amount, order.currency)}</td>
                         <td>{order.payment_status}</td>
-                        {/*<td>{order.order_status}</td>
-                        <td>{order.fulfill_status}</td> */}
+                        <td>
+                          <span className={`badge ${decisions[order.id] ? decisions[order.id].toLowerCase() : "pending"}`}>
+                            {decisions[order.id] || "Pending"}
+                          </span>
+                        </td>
                       </tr>
                     );
                   }
                   return items.map((it, idx) => (
-                    <tr key={`${order.id}-${idx}`}>
+                    <tr key={`${order.id}-${idx}`} className="order-row" onClick={() => handleRowClick(order)}>
                       <td>{idx === 0 ? order.id : ""}</td>
                       <td>{idx === 0 ? (order.created_at ? new Date(order.created_at).toLocaleString() : "") : ""}</td>
                       <td>{idx === 0 ? (order.email || "") : ""}</td>
@@ -145,13 +231,7 @@ function Orders() {
                           <img
                             src={it.image_url}
                             alt={it.product_name || "item"}
-                            style={{
-                              width: "60px",
-                              height: "60px",
-                              borderRadius: "8px",
-                              objectFit: "cover",
-                              border: "1px solid #ccc",
-                            }}
+                            className="thumbnail"
                           />
                         )}
                       </td>
@@ -159,20 +239,134 @@ function Orders() {
                       <td>{priceItem(it.unit_price_minor)}</td>
                       <td>{idx === 0 ? toMoney(order.total_amount, order.currency) : ""}</td>
                       <td>{idx === 0 ? order.payment_status : ""}</td>
-                      {/*<td>{idx === 0 ? order.order_status : ""}</td>
-                      <td>{idx === 0 ? order.fulfill_status : ""}</td> */}
+                      <td>{idx === 0 ? (
+                        <span className={`badge ${decisions[order.id] ? decisions[order.id].toLowerCase() : "pending"}`}>
+                          {decisions[order.id] || "Pending"}
+                        </span>
+                      ) : ""}</td>
                     </tr>
                   ));
                 })
               ) : (
                 <tr>
-                  <td colSpan={11}>No orders available</td>
+                  <td colSpan={10}>No orders available</td>
                 </tr>
               )}
             </tbody>
           </table>
         </div>
       </div>
+
+      {selectedOrder && (
+        <div className="modal-overlay" onClick={closeModal}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div className="modal-title">Order Details</div>
+              <button className="icon-btn" onClick={closeModal}>×</button>
+            </div>
+            <div className="modal-body">
+              <div className="order-summary">
+                <div className="summary-row">
+                  <span>Order ID</span>
+                  <strong>{selectedOrder.id}</strong>
+                </div>
+                <div className="summary-row">
+                  <span>Date</span>
+                  <strong>{selectedOrder.created_at ? new Date(selectedOrder.created_at).toLocaleString() : ""}</strong>
+                </div>
+                <div className="summary-row">
+                  <span>Email</span>
+                  <strong>{selectedOrder.email || ""}</strong>
+                </div>
+                <div className="summary-row">
+                  <span>Customer Type</span>
+                  <strong className={`pill ${getCustomerType(selectedOrder) === "B2B" ? "b2b" : "b2c"}`}>
+                    {getCustomerType(selectedOrder)}
+                  </strong>
+                </div>
+                <div className="summary-row">
+                  <span>Total</span>
+                  <strong>{toMoney(selectedOrder.total_amount, selectedOrder.currency)}</strong>
+                </div>
+                <div className="summary-row">
+                  <span>Payment</span>
+                  <strong>{selectedOrder.payment_status || "—"}</strong>
+                </div>
+              </div>
+
+              <div className="address-block">
+                <div className="block-title">Shipping Address</div>
+                <div className="address-text">
+                  {(() => {
+                    const addr = extractAddress(selectedOrder);
+                    const text = formatAddress(addr);
+                    return text || "No address available";
+                  })()}
+                </div>
+                <div className="address-meta">
+                  {(() => {
+                    const a = extractAddress(selectedOrder);
+                    return (
+                      <>
+                        {a.phone ? <span>Phone: {a.phone}</span> : null}
+                        {a.postal_code ? <span>Pincode: {a.postal_code}</span> : null}
+                        {a.country ? <span>Country: {a.country}</span> : null}
+                      </>
+                    );
+                  })()}
+                </div>
+              </div>
+
+              <div className="items-block">
+                <div className="block-title">Items</div>
+                <div className="items-list">
+                  {(selectedOrder.items || []).map((it, i) => (
+                    <div className="item-card" key={i}>
+                      <div className="item-left">
+                        {it.image_url ? <img src={it.image_url} alt={it.product_name || "item"} /> : <div className="img-fallback">No Image</div>}
+                      </div>
+                      <div className="item-right">
+                        <div className="item-name">{it.product_name || "Product"}</div>
+                        <div className="item-meta">
+                          <span>Qty: {it.quantity || 0}</span>
+                          <span>{priceItem(it.unit_price_minor)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  {(selectedOrder.items || []).length === 0 && <div className="empty-items">No items for this order</div>}
+                </div>
+              </div>
+            </div>
+
+            <div className="modal-footer">
+              <div className="left-note">
+                {selectedOrder.local_status ? (
+                  <span className={`status-note ${selectedOrder.local_status.toLowerCase()}`}>Marked as {selectedOrder.local_status}</span>
+                ) : (
+                  <span className="status-note pending">No decision yet</span>
+                )}
+              </div>
+              <div className="actions">
+                <button
+                  className="btn decline"
+                  onClick={() => declineOrder(selectedOrder.id)}
+                  disabled={decisions[selectedOrder.id] === "Declined"}
+                >
+                  Decline
+                </button>
+                <button
+                  className="btn accept"
+                  onClick={() => acceptOrder(selectedOrder.id)}
+                  disabled={decisions[selectedOrder.id] === "Accepted"}
+                >
+                  Accept
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
