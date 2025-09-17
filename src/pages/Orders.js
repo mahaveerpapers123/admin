@@ -11,6 +11,7 @@ function Orders() {
   const [decisions, setDecisions] = useState({});
   const [search, setSearch] = useState("");
   const [onlyPending, setOnlyPending] = useState(false);
+  const [showCompletionPopup, setShowCompletionPopup] = useState(false);
 
   useEffect(() => {
     const fetchOrders = async () => {
@@ -158,6 +159,8 @@ function Orders() {
   const acceptOrder = async (id) => {
     setDecisions((d) => ({ ...d, [id]: "Accepted" }));
     setSelectedOrder((o) => (o ? { ...o, local_status: "Accepted" } : o));
+    setShowCompletionPopup(true);
+    setTimeout(() => setShowCompletionPopup(false), 3000);
     await saveDecision(id, "Accepted");
   };
 
@@ -379,10 +382,12 @@ function Orders() {
 
             <div className="modal-footer">
               <div className="left-note">
-                {selectedOrder.local_status ? (
-                  <span className={`status-note ${selectedOrder.local_status.toLowerCase()}`}>Marked as {selectedOrder.local_status}</span>
+                {getDecision(selectedOrder) === "Accepted" ? (
+                  <span className="status-note accepted">Order completed</span>
+                ) : getDecision(selectedOrder) === "Declined" ? (
+                  <span className="status-note declined">Marked as Declined</span>
                 ) : (
-                  <span className="status-note pending">No decision yet</span>
+                  <span className="status-note hidden-text"></span>
                 )}
               </div>
               <div className="actions">
@@ -401,6 +406,16 @@ function Orders() {
                   Accept
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showCompletionPopup && (
+        <div className="center-popup-overlay">
+          <div className="center-popup">
+            <div className="center-popup-content">
+              <div className="center-popup-title">Order completed</div>
             </div>
           </div>
         </div>

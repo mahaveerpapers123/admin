@@ -196,7 +196,14 @@ tr:hover {
   border-radius: 10px;
   border: none;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  line-height: 1;
+  font-size: 20px;
 }
+
 
 .modal-body {
   padding: 18px;
@@ -362,6 +369,12 @@ tr:hover {
   color: #ff6b6b;
 }
 
+.status-note.hidden-text {
+  background: transparent;
+  color: transparent;
+  padding: 0;
+}
+
 .actions {
   display: flex;
   gap: 10px;
@@ -388,4 +401,51 @@ tr:hover {
 .btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.center-popup-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.35);
+  display: grid;
+  place-items: center;
+  z-index: 10000;
+}
+
+.center-popup {
+  position: relative;
+  min-width: 260px;
+  max-width: 90vw;
+  padding: 18px 24px;
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.95), rgba(245,255,252,0.95));
+  box-shadow: 0 20px 60px rgba(0,255,204,0.25);
+  border: 1px solid rgba(0,255,204,0.35);
+}
+
+.center-close {
+  position: absolute;
+  top: 4px;
+  right: 10px;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: none;
+  background: rgba(0,0,0,0.06);
+  color: #0e1726;
+  cursor: pointer;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.center-popup-content {
+  display: grid;
+  place-items: center;
+}
+
+.center-popup-title {
+  color: #0b1a23;
+  font-weight: 800;
+  font-size: 18px;
+  letter-spacing: 0.3px;
 }
