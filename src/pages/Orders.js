@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import "./Orders.css";
 import AdminNavbar from "./AdminNavbar";
 
@@ -10,7 +10,7 @@ function Orders() {
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [decisions, setDecisions] = useState({});
   const [search, setSearch] = useState("");
-  const [showActive, setShowActive] = useState(false);
+  const [onlyPending, setOnlyPending] = useState(false);
 
   useEffect(() => {
     const fetchOrders = async () => {
@@ -71,6 +71,13 @@ function Orders() {
           return { ...order, items: itemsNorm };
         });
         setOrders(normalized);
+        setDecisions((prev) => {
+          const next = { ...prev };
+          for (const o of normalized) {
+            if (o.decision_status) next[o.id] = o.decision_status;
+          }
+          return next;
+        });
       } catch (err) {
         setError("Failed to fetch orders: " + (err?.message || "Unknown error"));
       }
@@ -138,28 +145,58 @@ function Orders() {
 
   const closeModal = () => setSelectedOrder(null);
 
-  const acceptOrder = (id) => {
+  const saveDecision = async (id, decision) => {
+    try {
+      await fetch(`${API_BASE}/api/orders/${id}/decision`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ decision }),
+      });
+    } catch {}
+  };
+
+  const acceptOrder = async (id) => {
     setDecisions((d) => ({ ...d, [id]: "Accepted" }));
     setSelectedOrder((o) => (o ? { ...o, local_status: "Accepted" } : o));
+    await saveDecision(id, "Accepted");
   };
 
-  const declineOrder = (id) => {
+  const declineOrder = async (id) => {
     setDecisions((d) => ({ ...d, [id]: "Declined" }));
     setSelectedOrder((o) => (o ? { ...o, local_status: "Declined" } : o));
+    await saveDecision(id, "Declined");
   };
 
-  const filtered = orders.filter((o) => {
+  const getDecision = (order) => decisions[order.id] || order.decision_status || "Pending";
+
+  const filteredAndSortedOrders = useMemo(() => {
     const q = search.trim().toLowerCase();
-    const matches =
+    const matchesSearch = (o) =>
       !q ||
       (o.id + "").toLowerCase().includes(q) ||
       (o.email || "").toLowerCase().includes(q) ||
       (o.payment_status || "").toLowerCase().includes(q) ||
       o.items.some((it) => (it.product_name || "").toLowerCase().includes(q));
-    if (!showActive) return matches;
-    const status = decisions[o.id];
-    return matches && status !== "Declined";
-  });
+
+    const keepWithToggle = (o) => {
+      if (!onlyPending) return true;
+      const dec = getDecision(o);
+      return dec !== "Declined";
+    };
+
+    const decisionRank = { Accepted: 0, Pending: 1, Declined: 2 };
+
+    return [...orders]
+      .filter((o) => matchesSearch(o) && keepWithToggle(o))
+      .sort((a, b) => {
+        const ra = decisionRank[getDecision(a)] ?? 1;
+        const rb = decisionRank[getDecision(b)] ?? 1;
+        if (ra !== rb) return ra - rb;
+        const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
+        return tb - ta;
+      });
+  }, [orders, search, onlyPending, decisions]);
 
   return (
     <div className="orders-root">
@@ -176,8 +213,8 @@ function Orders() {
           <label className="orders-toggle">
             <input
               type="checkbox"
-              checked={showActive}
-              onChange={(e) => setShowActive(e.target.checked)}
+              checked={onlyPending}
+              onChange={(e) => setOnlyPending(e.target.checked)}
             />
             Hide declined
           </label>
@@ -200,8 +237,8 @@ function Orders() {
               </tr>
             </thead>
             <tbody>
-              {filtered.length > 0 ? (
-                filtered.flatMap((order) => {
+              {filteredAndSortedOrders.length > 0 ? (
+                filteredAndSortedOrders.flatMap((order) => {
                   const items = order.items || [];
                   if (items.length === 0) {
                     return (
@@ -214,8 +251,8 @@ function Orders() {
                         <td>{toMoney(order.total_amount, order.currency)}</td>
                         <td>{order.payment_status}</td>
                         <td>
-                          <span className={`badge ${decisions[order.id] ? decisions[order.id].toLowerCase() : "pending"}`}>
-                            {decisions[order.id] || "Pending"}
+                          <span className={`badge ${getDecision(order).toLowerCase()}`}>
+                            {getDecision(order)}
                           </span>
                         </td>
                       </tr>
@@ -241,8 +278,8 @@ function Orders() {
                       <td>{idx === 0 ? toMoney(order.total_amount, order.currency) : ""}</td>
                       <td>{idx === 0 ? order.payment_status : ""}</td>
                       <td>{idx === 0 ? (
-                        <span className={`badge ${decisions[order.id] ? decisions[order.id].toLowerCase() : "pending"}`}>
-                          {decisions[order.id] || "Pending"}
+                        <span className={`badge ${getDecision(order).toLowerCase()}`}>
+                          {getDecision(order)}
                         </span>
                       ) : ""}</td>
                     </tr>
