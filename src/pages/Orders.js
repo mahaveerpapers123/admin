@@ -9,79 +9,42 @@ function Orders() {
   const [error, setError] = useState("");
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [decisions, setDecisions] = useState({});
+  const [completed, setCompleted] = useState({});
+  const [saving, setSaving] = useState({});
   const [search, setSearch] = useState("");
   const [onlyPending, setOnlyPending] = useState(false);
-  const [showCompletionPopup, setShowCompletionPopup] = useState(false);
+  const [emailNotice, setEmailNotice] = useState("");
 
   useEffect(() => {
     const fetchOrders = async () => {
       try {
-        const res = await fetch(`${API_BASE}/api/orders`, {
-          headers: { Accept: "application/json" },
-        });
+        const res = await fetch(`${API_BASE}/api/orders`, { headers: { Accept: "application/json" } });
         const text = await res.text();
         let data = null;
-        try {
-          data = text ? JSON.parse(text) : null;
-        } catch {
-          data = null;
-        }
-        if (!res.ok) {
-          setError((data && (data.error || data.message)) || "Failed to fetch orders");
-          return;
-        }
+        try { data = text ? JSON.parse(text) : null; } catch { data = null; }
+        if (!res.ok) { setError((data && (data.error || data.message)) || "Failed to fetch orders"); return; }
         const ordersArray = Array.isArray(data) ? data : data?.orders || [];
         const normalized = ordersArray.map((order) => {
           let items = [];
-          if (Array.isArray(order.items)) {
-            items = order.items;
-          } else if (typeof order.items === "string") {
-            try {
-              const parsed = JSON.parse(order.items);
-              items = Array.isArray(parsed) ? parsed : [];
-            } catch {
-              items = [];
-            }
+          if (Array.isArray(order.items)) items = order.items;
+          else if (typeof order.items === "string") {
+            try { const parsed = JSON.parse(order.items); items = Array.isArray(parsed) ? parsed : []; } catch { items = []; }
           }
           const itemsNorm = items.map((it) => ({
             product_name: it.product_name ?? it.name ?? "",
-            image_url:
-              it.image_url ??
-              it.image ??
-              (Array.isArray(it.images) ? it.images[0] : "") ??
-              "",
-            quantity:
-              typeof it.quantity === "number"
-                ? it.quantity
-                : typeof it.qty === "number"
-                ? it.qty
-                : typeof it.quantity_ordered === "number"
-                ? it.quantity_ordered
-                : Number(it.quantity) || Number(it.qty) || 0,
-            unit_price_minor:
-              typeof it.unit_price_minor === "number"
-                ? it.unit_price_minor
-                : typeof it.price_minor === "number"
-                ? it.price_minor
-                : typeof it.price === "number"
-                ? Math.round(it.price * 100)
-                : typeof it.price === "string"
-                ? Math.round(Number(it.price) * 100)
-                : 0,
+            image_url: it.image_url ?? it.image ?? (Array.isArray(it.images) ? it.images[0] : "") ?? "",
+            quantity: typeof it.quantity === "number" ? it.quantity : typeof it.qty === "number" ? it.qty : typeof it.quantity_ordered === "number" ? it.quantity_ordered : Number(it.quantity) || Number(it.qty) || 0,
+            unit_price_minor: typeof it.unit_price_minor === "number" ? it.unit_price_minor : typeof it.price_minor === "number" ? it.price_minor : typeof it.price === "number" ? Math.round(it.price * 100) : typeof it.price === "string" ? Math.round(Number(it.price) * 100) : 0,
           }));
           return { ...order, items: itemsNorm };
         });
         setOrders(normalized);
         setDecisions((prev) => {
           const next = { ...prev };
-          for (const o of normalized) {
-            if (o.decision_status) next[o.id] = o.decision_status;
-          }
+          for (const o of normalized) { if (o.decision_status) next[o.id] = o.decision_status; }
           return next;
         });
-      } catch (err) {
-        setError("Failed to fetch orders: " + (err?.message || "Unknown error"));
-      }
+      } catch (err) { setError("Failed to fetch orders: " + (err?.message || "Unknown error")); }
     };
     fetchOrders();
   }, []);
@@ -102,21 +65,14 @@ function Orders() {
     if (typeof order.type === "string") return order.type.toUpperCase();
     if (typeof order.user_type === "string") return order.user_type.toUpperCase();
     const email = order.email || "";
-    const domain = email.split("@")[1] || "";
-    if (domain && !["gmail.com", "yahoo.com", "outlook.com", "hotmail.com", "icloud.com", "proton.me"].includes(domain.toLowerCase())) {
-      return "B2B";
-    }
+       const domain = email.split("@")[1] || "";
+    if (domain && !["gmail.com", "yahoo.com", "outlook.com", "hotmail.com", "icloud.com", "proton.me"].includes(domain.toLowerCase())) return "B2B";
     return "B2C";
   };
 
   const extractAddress = (order) => {
-    const a =
-      order.shipping_address ||
-      order.address ||
-      order.shipping ||
-      order.customer_address ||
-      {};
-    const flat = {
+    const a = order.shipping_address || order.address || order.shipping || order.customer_address || {};
+    return {
       name: a.name || order.name || order.customer_name || "",
       line1: a.line1 || a.address1 || a.address_line1 || order.address_line1 || "",
       line2: a.line2 || a.address2 || a.address_line2 || order.address_line2 || "",
@@ -126,51 +82,72 @@ function Orders() {
       country: a.country || order.country || "",
       phone: a.phone || order.phone || "",
     };
-    return flat;
   };
 
   const formatAddress = (addr) => {
-    const parts = [
-      addr.name,
-      addr.line1,
-      addr.line2,
-      [addr.city, addr.state, addr.postal_code].filter(Boolean).join(" "),
-      addr.country,
-    ].filter(Boolean);
+    const parts = [addr.name, addr.line1, addr.line2, [addr.city, addr.state, addr.postal_code].filter(Boolean).join(" "), addr.country].filter(Boolean);
     return parts.join(", ");
   };
 
-  const handleRowClick = (order) => {
-    setSelectedOrder(order);
-  };
-
+  const handleRowClick = (order) => setSelectedOrder(order);
   const closeModal = () => setSelectedOrder(null);
 
   const saveDecision = async (id, decision) => {
     try {
-      await fetch(`${API_BASE}/api/orders/${id}/decision`, {
+      const res = await fetch(`${API_BASE}/api/orders/${id}/decision`, {
         method: "PUT",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
         body: JSON.stringify({ decision }),
       });
-    } catch {}
+      const raw = await res.text();
+      let data = null;
+      try { data = raw ? JSON.parse(raw) : null; } catch {}
+      return { ok: res.ok, data, raw };
+    } catch (e) {
+      return { ok: false, data: null, raw: String(e?.message || "network error") };
+    }
   };
 
   const acceptOrder = async (id) => {
-    setDecisions((d) => ({ ...d, [id]: "Accepted" }));
-    setSelectedOrder((o) => (o ? { ...o, local_status: "Accepted" } : o));
-    setShowCompletionPopup(true);
-    setTimeout(() => setShowCompletionPopup(false), 3000);
-    await saveDecision(id, "Accepted");
+    setSaving((s) => ({ ...s, [id]: true }));
+    const { ok, data } = await saveDecision(id, "Accepted");
+    if (ok) {
+      setDecisions((d) => ({ ...d, [id]: "Accepted" }));
+      setSelectedOrder((o) => (o && o.id === id ? { ...o, local_status: "Accepted" } : o));
+      if (data?.emailSent) {
+        setEmailNotice("Email sent to customer");
+        setTimeout(() => setEmailNotice(""), 2500);
+      } else if (typeof data?.emailSent !== "undefined") {
+        setEmailNotice(data?.emailError ? `Email failed: ${data.emailError}` : "Email failed");
+        setTimeout(() => setEmailNotice(""), 3500);
+      }
+    } else {
+      setEmailNotice("Failed to accept order");
+      setTimeout(() => setEmailNotice(""), 3000);
+    }
+    setSaving((s) => ({ ...s, [id]: false }));
   };
 
   const declineOrder = async (id) => {
-    setDecisions((d) => ({ ...d, [id]: "Declined" }));
-    setSelectedOrder((o) => (o ? { ...o, local_status: "Declined" } : o));
-    await saveDecision(id, "Declined");
+    setSaving((s) => ({ ...s, [id]: true }));
+    const { ok } = await saveDecision(id, "Declined");
+    if (ok) {
+      setDecisions((d) => ({ ...d, [id]: "Declined" }));
+      setSelectedOrder((o) => (o && o.id === id ? { ...o, local_status: "Declined" } : o));
+    } else {
+      setEmailNotice("Failed to decline order");
+      setTimeout(() => setEmailNotice(""), 3000);
+    }
+    setSaving((s) => ({ ...s, [id]: false }));
+  };
+
+  const markCompleted = (id) => {
+    setCompleted((c) => ({ ...c, [id]: true }));
+    if (selectedOrder && selectedOrder.id === id) setSelectedOrder({ ...selectedOrder });
   };
 
   const getDecision = (order) => decisions[order.id] || order.decision_status || "Pending";
+  const displayDecision = (order) => (completed[order.id] ? "Order completed" : getDecision(order));
 
   const filteredAndSortedOrders = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -180,26 +157,25 @@ function Orders() {
       (o.email || "").toLowerCase().includes(q) ||
       (o.payment_status || "").toLowerCase().includes(q) ||
       o.items.some((it) => (it.product_name || "").toLowerCase().includes(q));
-
     const keepWithToggle = (o) => {
       if (!onlyPending) return true;
       const dec = getDecision(o);
       return dec !== "Declined";
     };
-
-    const decisionRank = { Accepted: 0, Pending: 1, Declined: 2 };
-
-    return [...orders]
-      .filter((o) => matchesSearch(o) && keepWithToggle(o))
-      .sort((a, b) => {
-        const ra = decisionRank[getDecision(a)] ?? 1;
-        const rb = decisionRank[getDecision(b)] ?? 1;
-        if (ra !== rb) return ra - rb;
-        const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
-        const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
-        return tb - ta;
-      });
-  }, [orders, search, onlyPending, decisions]);
+    const rank = (o) => {
+      if (completed[o.id]) return -1;
+      const m = { Accepted: 0, Pending: 1, Declined: 2 };
+      return m[getDecision(o)] ?? 1;
+    };
+    return [...orders].filter((o) => matchesSearch(o) && keepWithToggle(o)).sort((a, b) => {
+      const ra = rank(a);
+      const rb = rank(b);
+      if (ra !== rb) return ra - rb;
+      const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return tb - ta;
+    });
+  }, [orders, search, onlyPending, decisions, completed]);
 
   return (
     <div className="orders-root">
@@ -207,21 +183,13 @@ function Orders() {
       <div className="orders-container">
         <h2 className="table-title">Orders</h2>
         <div className="orders-toolbar">
-          <input
-            className="orders-search"
-            placeholder="Search by Order ID, email, product, payment status"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
+          <input className="orders-search" placeholder="Search by Order ID, email, product, payment status" value={search} onChange={(e) => setSearch(e.target.value)} />
           <label className="orders-toggle">
-            <input
-              type="checkbox"
-              checked={onlyPending}
-              onChange={(e) => setOnlyPending(e.target.checked)}
-            />
+            <input type="checkbox" checked={onlyPending} onChange={(e) => setOnlyPending(e.target.checked)} />
             Hide declined
           </label>
         </div>
+        {emailNotice ? <div className="toast">{emailNotice}</div> : null}
         {error && <div className="error-message">{error}</div>}
         <div className="glass-table">
           <table>
@@ -254,9 +222,7 @@ function Orders() {
                         <td>{toMoney(order.total_amount, order.currency)}</td>
                         <td>{order.payment_status}</td>
                         <td>
-                          <span className={`badge ${getDecision(order).toLowerCase()}`}>
-                            {getDecision(order)}
-                          </span>
+                          <span className={`badge ${displayDecision(order).toLowerCase().replace(" ", "-")}`}>{displayDecision(order)}</span>
                         </td>
                       </tr>
                     );
@@ -267,24 +233,12 @@ function Orders() {
                       <td>{idx === 0 ? (order.created_at ? new Date(order.created_at).toLocaleString() : "") : ""}</td>
                       <td>{idx === 0 ? (order.email || "") : ""}</td>
                       <td>{it.product_name || ""}</td>
-                      <td>
-                        {it.image_url && (
-                          <img
-                            src={it.image_url}
-                            alt={it.product_name || "item"}
-                            className="thumbnail"
-                          />
-                        )}
-                      </td>
+                      <td>{it.image_url && <img src={it.image_url} alt={it.product_name || "item"} className="thumbnail" />}</td>
                       <td>{it.quantity ?? ""}</td>
                       <td>{priceItem(it.unit_price_minor)}</td>
                       <td>{idx === 0 ? toMoney(order.total_amount, order.currency) : ""}</td>
                       <td>{idx === 0 ? order.payment_status : ""}</td>
-                      <td>{idx === 0 ? (
-                        <span className={`badge ${getDecision(order).toLowerCase()}`}>
-                          {getDecision(order)}
-                        </span>
-                      ) : ""}</td>
+                      <td>{idx === 0 ? <span className={`badge ${displayDecision(order).toLowerCase().replace(" ", "-")}`}>{displayDecision(order)}</span> : ""}</td>
                     </tr>
                   ));
                 })
@@ -307,43 +261,17 @@ function Orders() {
             </div>
             <div className="modal-body">
               <div className="order-summary">
-                <div className="summary-row">
-                  <span>Order ID</span>
-                  <strong>{selectedOrder.id}</strong>
-                </div>
-                <div className="summary-row">
-                  <span>Date</span>
-                  <strong>{selectedOrder.created_at ? new Date(selectedOrder.created_at).toLocaleString() : ""}</strong>
-                </div>
-                <div className="summary-row">
-                  <span>Email</span>
-                  <strong>{selectedOrder.email || ""}</strong>
-                </div>
-                <div className="summary-row">
-                  <span>Customer Type</span>
-                  <strong className={`pill ${getCustomerType(selectedOrder) === "B2B" ? "b2b" : "b2c"}`}>
-                    {getCustomerType(selectedOrder)}
-                  </strong>
-                </div>
-                <div className="summary-row">
-                  <span>Total</span>
-                  <strong>{toMoney(selectedOrder.total_amount, selectedOrder.currency)}</strong>
-                </div>
-                <div className="summary-row">
-                  <span>Payment</span>
-                  <strong>{selectedOrder.payment_status || "—"}</strong>
-                </div>
+                <div className="summary-row"><span>Order ID</span><strong>{selectedOrder.id}</strong></div>
+                <div className="summary-row"><span>Date</span><strong>{selectedOrder.created_at ? new Date(selectedOrder.created_at).toLocaleString() : ""}</strong></div>
+                <div className="summary-row"><span>Email</span><strong>{selectedOrder.email || ""}</strong></div>
+                <div className="summary-row"><span>Customer Type</span><strong className={`pill ${getCustomerType(selectedOrder) === "B2B" ? "b2b" : "b2c"}`}>{getCustomerType(selectedOrder)}</strong></div>
+                <div className="summary-row"><span>Total</span><strong>{toMoney(selectedOrder.total_amount, selectedOrder.currency)}</strong></div>
+                <div className="summary-row"><span>Payment</span><strong>{selectedOrder.payment_status || "—"}</strong></div>
               </div>
 
               <div className="address-block">
                 <div className="block-title">Shipping Address</div>
-                <div className="address-text">
-                  {(() => {
-                    const addr = extractAddress(selectedOrder);
-                    const text = formatAddress(addr);
-                    return text || "No address available";
-                  })()}
-                </div>
+                <div className="address-text">{(() => { const addr = extractAddress(selectedOrder); const text = formatAddress(addr); return text || "No address available"; })()}</div>
                 <div className="address-meta">
                   {(() => {
                     const a = extractAddress(selectedOrder);
@@ -363,9 +291,7 @@ function Orders() {
                 <div className="items-list">
                   {(selectedOrder.items || []).map((it, i) => (
                     <div className="item-card" key={i}>
-                      <div className="item-left">
-                        {it.image_url ? <img src={it.image_url} alt={it.product_name || "item"} /> : <div className="img-fallback">No Image</div>}
-                      </div>
+                      <div className="item-left">{it.image_url ? <img src={it.image_url} alt={it.product_name || "item"} /> : <div className="img-fallback">No Image</div>}</div>
                       <div className="item-right">
                         <div className="item-name">{it.product_name || "Product"}</div>
                         <div className="item-meta">
@@ -382,40 +308,45 @@ function Orders() {
 
             <div className="modal-footer">
               <div className="left-note">
-                {getDecision(selectedOrder) === "Accepted" ? (
-                  <span className="status-note accepted">Order completed</span>
-                ) : getDecision(selectedOrder) === "Declined" ? (
+                {completed[selectedOrder.id] ? (
+                  <span className="status-note completed">Order completed</span>
+                ) : decisions[selectedOrder.id] === "Accepted" ? (
+                  <div className="complete-wrap">
+                    <span className="question">Is the order completed?</span>
+                    <button
+                      className="btn complete"
+                      onClick={(e) => { e.stopPropagation(); markCompleted(selectedOrder.id); }}
+                      disabled={!!saving[selectedOrder.id]}
+                    >
+                      Yes completed
+                    </button>
+                  </div>
+                ) : decisions[selectedOrder.id] === "Declined" ? (
                   <span className="status-note declined">Marked as Declined</span>
                 ) : (
                   <span className="status-note hidden-text"></span>
                 )}
               </div>
               <div className="actions">
-                <button
-                  className="btn decline"
-                  onClick={() => declineOrder(selectedOrder.id)}
-                  disabled={decisions[selectedOrder.id] === "Declined"}
-                >
-                  Decline
-                </button>
-                <button
-                  className="btn accept"
-                  onClick={() => acceptOrder(selectedOrder.id)}
-                  disabled={decisions[selectedOrder.id] === "Accepted"}
-                >
-                  Accept
-                </button>
+                {decisions[selectedOrder.id] === "Accepted" ? null : (
+                  <>
+                    <button
+                      className="btn decline"
+                      onClick={(e) => { e.stopPropagation(); declineOrder(selectedOrder.id); }}
+                      disabled={decisions[selectedOrder.id] === "Declined" || !!saving[selectedOrder.id]}
+                    >
+                      {saving[selectedOrder.id] && decisions[selectedOrder.id] !== "Accepted" ? "Saving..." : "Decline"}
+                    </button>
+                    <button
+                      className="btn accept"
+                      onClick={(e) => { e.stopPropagation(); acceptOrder(selectedOrder.id); }}
+                      disabled={decisions[selectedOrder.id] === "Accepted" || !!saving[selectedOrder.id]}
+                    >
+                      {saving[selectedOrder.id] && decisions[selectedOrder.id] !== "Declined" ? "Saving..." : "Accept"}
+                    </button>
+                  </>
+                )}
               </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showCompletionPopup && (
-        <div className="center-popup-overlay">
-          <div className="center-popup">
-            <div className="center-popup-content">
-              <div className="center-popup-title">Order completed</div>
             </div>
           </div>
         </div>

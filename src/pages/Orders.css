@@ -152,6 +152,12 @@ tr:hover {
   border: 1px solid rgba(255,107,107,0.35);
 }
 
+.badge.order-completed {
+  background: rgba(0, 200, 255, 0.15);
+  color: #66e0ff;
+  border: 1px solid rgba(0, 200, 255, 0.35);
+}
+
 .modal-overlay {
   position: fixed;
   inset: 0;
@@ -203,7 +209,6 @@ tr:hover {
   line-height: 1;
   font-size: 20px;
 }
-
 
 .modal-body {
   padding: 18px;
@@ -341,11 +346,16 @@ tr:hover {
   padding: 14px 18px;
   border-top: 1px solid rgba(255,255,255,0.1);
   background: rgba(255,255,255,0.03);
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .left-note {
   color: #c8f5ee;
   font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .status-note {
@@ -369,10 +379,27 @@ tr:hover {
   color: #ff6b6b;
 }
 
+.status-note.completed {
+  background: rgba(0, 200, 255, 0.15);
+  color: #66e0ff;
+  border: 1px solid rgba(0, 200, 255, 0.35);
+}
+
 .status-note.hidden-text {
   background: transparent;
   color: transparent;
   padding: 0;
+}
+
+.complete-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.question {
+  color: #c8f5ee;
+  font-weight: 600;
 }
 
 .actions {
@@ -398,54 +425,12 @@ tr:hover {
   color: #0b1a23;
 }
 
+.btn.complete {
+  background: linear-gradient(90deg, #66e0ff, #00ffcc);
+  color: #0b1a23;
+}
+
 .btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
-}
-
-.center-popup-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.35);
-  display: grid;
-  place-items: center;
-  z-index: 10000;
-}
-
-.center-popup {
-  position: relative;
-  min-width: 260px;
-  max-width: 90vw;
-  padding: 18px 24px;
-  border-radius: 16px;
-  background: linear-gradient(180deg, rgba(255,255,255,0.95), rgba(245,255,252,0.95));
-  box-shadow: 0 20px 60px rgba(0,255,204,0.25);
-  border: 1px solid rgba(0,255,204,0.35);
-}
-
-.center-close {
-  position: absolute;
-  top: 4px;
-  right: 10px;
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
-  border: none;
-  background: rgba(0,0,0,0.06);
-  color: #0e1726;
-  cursor: pointer;
-  font-size: 20px;
-  line-height: 1;
-}
-
-.center-popup-content {
-  display: grid;
-  place-items: center;
-}
-
-.center-popup-title {
-  color: #0b1a23;
-  font-weight: 800;
-  font-size: 18px;
-  letter-spacing: 0.3px;
 }
