@@ -93,7 +93,7 @@ th {
 tr:hover {
   background-color: rgba(0, 255, 204, 0.05);
   transform: scale(1.01);
-  transition: all 0.2s ease;
+  transition: all 0.3s ease;
 }
 
 @keyframes fadeIn {

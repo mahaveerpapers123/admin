@@ -10,7 +10,7 @@ function Orders() {
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [decisions, setDecisions] = useState({});
   const [search, setSearch] = useState("");
-  const [onlyPending, setOnlyPending] = useState(false);
+  const [showActive, setShowActive] = useState(false);
 
   useEffect(() => {
     const fetchOrders = async () => {
@@ -156,8 +156,9 @@ function Orders() {
       (o.email || "").toLowerCase().includes(q) ||
       (o.payment_status || "").toLowerCase().includes(q) ||
       o.items.some((it) => (it.product_name || "").toLowerCase().includes(q));
-    const pending = decisions[o.id] ? decisions[o.id] === "Accepted" ? false : !onlyPending : true;
-    return matches && (onlyPending ? !decisions[o.id] : pending);
+    if (!showActive) return matches;
+    const status = decisions[o.id];
+    return matches && status !== "Declined";
   });
 
   return (
@@ -175,10 +176,10 @@ function Orders() {
           <label className="orders-toggle">
             <input
               type="checkbox"
-              checked={onlyPending}
-              onChange={(e) => setOnlyPending(e.target.checked)}
+              checked={showActive}
+              onChange={(e) => setShowActive(e.target.checked)}
             />
-            Show only pending
+            Hide declined
           </label>
         </div>
         {error && <div className="error-message">{error}</div>}
