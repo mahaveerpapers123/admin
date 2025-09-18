@@ -49,6 +49,11 @@ function Orders() {
           for (const o of normalized) { if (o.decision_status) next[o.id] = o.decision_status; }
           return next;
         });
+        setCompleted((prev) => {
+          const next = { ...prev };
+          for (const o of normalized) { if ((o.fulfill_status || "").toLowerCase() === "completed") next[o.id] = true; }
+          return next;
+        });
       } catch (err) { setError("Failed to fetch orders: " + (err?.message || "Unknown error")); }
     };
     fetchOrders();
@@ -113,12 +118,42 @@ function Orders() {
     }
   };
 
+  const completeOrder = async (id) => {
+    setSaving((s) => ({ ...s, [id]: true }));
+    try {
+      const res = await fetch(`${API_BASE}/api/orders/${id}/complete`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+      });
+      const raw = await res.text();
+      let data = null;
+      try { data = raw ? JSON.parse(raw) : null; } catch {}
+      if (!res.ok) throw new Error(data?.error || "Failed to complete order");
+      setCompleted((c) => ({ ...c, [id]: true }));
+      setDecisions((d) => ({ ...d, [id]: data.order?.decision_status || d[id] || "Accepted" }));
+      setOrders((list) =>
+        list.map((o) =>
+          o.id === id ? { ...o, payment_status: "Completed", fulfill_status: "Completed", decision_status: data.order?.decision_status || o.decision_status || "Accepted" } : o
+        )
+      );
+      setSelectedOrder((o) =>
+        o && o.id === id ? { ...o, payment_status: "Completed", fulfill_status: "Completed", decision_status: data.order?.decision_status || o.decision_status || "Accepted" } : o
+      );
+    } catch (e) {
+      setEmailNotice("Failed to mark completed");
+      setTimeout(() => setEmailNotice(""), 3000);
+    } finally {
+      setSaving((s) => ({ ...s, [id]: false }));
+    }
+  };
+
   const acceptOrder = async (id) => {
     setSaving((s) => ({ ...s, [id]: true }));
     const { ok, data } = await saveDecision(id, "Accepted");
     if (ok) {
       setDecisions((d) => ({ ...d, [id]: "Accepted" }));
-      setSelectedOrder((o) => (o && o.id === id ? { ...o, local_status: "Accepted" } : o));
+      setOrders((list) => list.map((o) => (o.id === id ? { ...o, decision_status: "Accepted" } : o)));
+      setSelectedOrder((o) => (o && o.id === id ? { ...o, local_status: "Accepted", decision_status: "Accepted" } : o));
       if (data?.emailSent) {
         setEmailNotice("Email sent to customer");
         setTimeout(() => setEmailNotice(""), 2500);
@@ -138,7 +173,8 @@ function Orders() {
     const { ok } = await saveDecision(id, "Declined");
     if (ok) {
       setDecisions((d) => ({ ...d, [id]: "Declined" }));
-      setSelectedOrder((o) => (o && o.id === id ? { ...o, local_status: "Declined" } : o));
+      setOrders((list) => list.map((o) => (o.id === id ? { ...o, decision_status: "Declined" } : o)));
+      setSelectedOrder((o) => (o && o.id === id ? { ...o, local_status: "Declined", decision_status: "Declined" } : o));
     } else {
       setEmailNotice("Failed to decline order");
       setTimeout(() => setEmailNotice(""), 3000);
@@ -146,14 +182,10 @@ function Orders() {
     setSaving((s) => ({ ...s, [id]: false }));
   };
 
-  const markCompleted = (id) => {
-    setCompleted((c) => ({ ...c, [id]: true }));
-    if (selectedOrder && selectedOrder.id === id) setSelectedOrder({ ...selectedOrder });
-  };
-
   const getDecision = (order) => decisions[order.id] || order.decision_status || "Pending";
-  const getEffectiveStatus = (order) => completed[order.id] ? "Completed" : getDecision(order);
+  const getEffectiveStatus = (order) => completed[order.id] || (order.fulfill_status || "").toLowerCase() === "completed" ? "Completed" : getDecision(order);
   const displayDecision = (order) => (getEffectiveStatus(order) === "Completed" ? "Order completed" : getEffectiveStatus(order));
+  const displayPayment = (order) => completed[order.id] || (order.fulfill_status || "").toLowerCase() === "completed" ? "Completed" : (order.payment_status || "—");
 
   const filteredAndSortedOrders = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -248,7 +280,7 @@ function Orders() {
                         <td colSpan={3}>No items</td>
                         <td></td>
                         <td>{toMoney(order.total_amount, order.currency)}</td>
-                        <td>{order.payment_status}</td>
+                        <td>{displayPayment(order)}</td>
                         <td>
                           <span className={`badge ${getEffectiveStatus(order).toLowerCase() === "completed" ? "order-completed" : getEffectiveStatus(order).toLowerCase()}`}>{displayDecision(order)}</span>
                         </td>
@@ -265,7 +297,7 @@ function Orders() {
                       <td>{it.quantity ?? ""}</td>
                       <td>{priceItem(it.unit_price_minor)}</td>
                       <td>{idx === 0 ? toMoney(order.total_amount, order.currency) : ""}</td>
-                      <td>{idx === 0 ? order.payment_status : ""}</td>
+                      <td>{idx === 0 ? displayPayment(order) : ""}</td>
                       <td>
                         {idx === 0 ? (
                           <span className={`badge ${getEffectiveStatus(order).toLowerCase() === "completed" ? "order-completed" : getEffectiveStatus(order).toLowerCase()}`}>
@@ -302,7 +334,7 @@ function Orders() {
                 <div className="summary-row"><span>Email</span><strong>{selectedOrder.email || ""}</strong></div>
                 <div className="summary-row"><span>Customer Type</span><strong className={`pill ${getCustomerType(selectedOrder) === "B2B" ? "b2b" : "b2c"}`}>{getCustomerType(selectedOrder)}</strong></div>
                 <div className="summary-row"><span>Total</span><strong>{toMoney(selectedOrder.total_amount, selectedOrder.currency)}</strong></div>
-                <div className="summary-row"><span>Payment</span><strong>{selectedOrder.payment_status || "—"}</strong></div>
+                <div className="summary-row"><span>Payment</span><strong>{displayPayment(selectedOrder)}</strong></div>
               </div>
 
               <div className="address-block">
@@ -344,39 +376,39 @@ function Orders() {
 
             <div className="modal-footer">
               <div className="left-note">
-                {completed[selectedOrder.id] ? (
+                {completed[selectedOrder.id] || (selectedOrder.fulfill_status || "").toLowerCase() === "completed" ? (
                   <span className="status-note completed">Order completed</span>
-                ) : decisions[selectedOrder.id] === "Accepted" ? (
+                ) : decisions[selectedOrder.id] === "Accepted" || selectedOrder.decision_status === "Accepted" ? (
                   <div className="complete-wrap">
                     <span className="question">Is the order completed?</span>
                     <button
                       className="btn complete"
-                      onClick={(e) => { e.stopPropagation(); markCompleted(selectedOrder.id); }}
+                      onClick={(e) => { e.stopPropagation(); completeOrder(selectedOrder.id); }}
                       disabled={!!saving[selectedOrder.id]}
                     >
                       Yes completed
                     </button>
                   </div>
-                ) : decisions[selectedOrder.id] === "Declined" ? (
+                ) : decisions[selectedOrder.id] === "Declined" || selectedOrder.decision_status === "Declined" ? (
                   <span className="status-note declined">Marked as Declined</span>
                 ) : (
                   <span className="status-note hidden-text"></span>
                 )}
               </div>
               <div className="actions">
-                {decisions[selectedOrder.id] === "Accepted" ? null : (
+                {decisions[selectedOrder.id] === "Accepted" || selectedOrder.decision_status === "Accepted" ? null : (
                   <>
                     <button
                       className="btn decline"
                       onClick={(e) => { e.stopPropagation(); declineOrder(selectedOrder.id); }}
-                      disabled={decisions[selectedOrder.id] === "Declined" || !!saving[selectedOrder.id]}
+                      disabled={decisions[selectedOrder.id] === "Declined" || selectedOrder.decision_status === "Declined" || !!saving[selectedOrder.id]}
                     >
                       {saving[selectedOrder.id] && decisions[selectedOrder.id] !== "Accepted" ? "Saving..." : "Decline"}
                     </button>
                     <button
                       className="btn accept"
                       onClick={(e) => { e.stopPropagation(); acceptOrder(selectedOrder.id); }}
-                      disabled={decisions[selectedOrder.id] === "Accepted" || !!saving[selectedOrder.id]}
+                      disabled={decisions[selectedOrder.id] === "Accepted" || selectedOrder.decision_status === "Accepted" || !!saving[selectedOrder.id]}
                     >
                       {saving[selectedOrder.id] && decisions[selectedOrder.id] !== "Declined" ? "Saving..." : "Accept"}
                     </button>
