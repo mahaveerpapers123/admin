@@ -33,6 +33,7 @@
   justify-content: center;
   align-items: center;
   margin-bottom: 16px;
+  flex-wrap: wrap;
 }
 
 .orders-search {
@@ -49,12 +50,39 @@
   color: rgba(224,247,250,0.6);
 }
 
-.orders-toggle {
-  display: inline-flex;
+.status-filters {
+  display: flex;
   gap: 8px;
+  flex-wrap: wrap;
+}
+
+.chip {
+  display: inline-flex;
   align-items: center;
-  color: #9de8d9;
-  font-size: 14px;
+  gap: 6px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  user-select: none;
+  border: 1px solid rgba(255,255,255,0.12);
+  color: #c8f5ee;
+  background: rgba(255,255,255,0.05);
+}
+
+.chip input {
+  accent-color: #00ffcc;
+}
+
+.chip.on {
+  background: rgba(0,255,204,0.12);
+  color: #0fffc1;
+  border-color: rgba(0,255,204,0.35);
+}
+
+.chip.off {
+  opacity: 0.6;
 }
 
 .glass-table {

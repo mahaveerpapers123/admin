@@ -12,8 +12,13 @@ function Orders() {
   const [completed, setCompleted] = useState({});
   const [saving, setSaving] = useState({});
   const [search, setSearch] = useState("");
-  const [onlyPending, setOnlyPending] = useState(false);
   const [emailNotice, setEmailNotice] = useState("");
+  const [statusFilters, setStatusFilters] = useState({
+    Accepted: true,
+    Pending: true,
+    Declined: true,
+    Completed: true,
+  });
 
   useEffect(() => {
     const fetchOrders = async () => {
@@ -65,7 +70,7 @@ function Orders() {
     if (typeof order.type === "string") return order.type.toUpperCase();
     if (typeof order.user_type === "string") return order.user_type.toUpperCase();
     const email = order.email || "";
-       const domain = email.split("@")[1] || "";
+    const domain = email.split("@")[1] || "";
     if (domain && !["gmail.com", "yahoo.com", "outlook.com", "hotmail.com", "icloud.com", "proton.me"].includes(domain.toLowerCase())) return "B2B";
     return "B2C";
   };
@@ -147,7 +152,8 @@ function Orders() {
   };
 
   const getDecision = (order) => decisions[order.id] || order.decision_status || "Pending";
-  const displayDecision = (order) => (completed[order.id] ? "Order completed" : getDecision(order));
+  const getEffectiveStatus = (order) => completed[order.id] ? "Completed" : getDecision(order);
+  const displayDecision = (order) => (getEffectiveStatus(order) === "Completed" ? "Order completed" : getEffectiveStatus(order));
 
   const filteredAndSortedOrders = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -157,25 +163,33 @@ function Orders() {
       (o.email || "").toLowerCase().includes(q) ||
       (o.payment_status || "").toLowerCase().includes(q) ||
       o.items.some((it) => (it.product_name || "").toLowerCase().includes(q));
-    const keepWithToggle = (o) => {
-      if (!onlyPending) return true;
-      const dec = getDecision(o);
-      return dec !== "Declined";
+
+    const matchesStatus = (o) => {
+      const s = getEffectiveStatus(o);
+      return !!statusFilters[s] && statusFilters[s] === true;
     };
+
     const rank = (o) => {
-      if (completed[o.id]) return -1;
-      const m = { Accepted: 0, Pending: 1, Declined: 2 };
-      return m[getDecision(o)] ?? 1;
+      const s = getEffectiveStatus(o);
+      const m = { Accepted: 0, Pending: 1, Declined: 2, Completed: 3 };
+      return m[s] ?? 1;
     };
-    return [...orders].filter((o) => matchesSearch(o) && keepWithToggle(o)).sort((a, b) => {
-      const ra = rank(a);
-      const rb = rank(b);
-      if (ra !== rb) return ra - rb;
-      const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
-      const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
-      return tb - ta;
-    });
-  }, [orders, search, onlyPending, decisions, completed]);
+
+    return [...orders]
+      .filter((o) => matchesSearch(o) && matchesStatus(o))
+      .sort((a, b) => {
+        const ra = rank(a);
+        const rb = rank(b);
+        if (ra !== rb) return ra - rb;
+        const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
+        return tb - ta;
+      });
+  }, [orders, search, decisions, completed, statusFilters]);
+
+  const toggleFilter = (key) => {
+    setStatusFilters((f) => ({ ...f, [key]: !f[key] }));
+  };
 
   return (
     <div className="orders-root">
@@ -184,10 +198,24 @@ function Orders() {
         <h2 className="table-title">Orders</h2>
         <div className="orders-toolbar">
           <input className="orders-search" placeholder="Search by Order ID, email, product, payment status" value={search} onChange={(e) => setSearch(e.target.value)} />
-          <label className="orders-toggle">
-            <input type="checkbox" checked={onlyPending} onChange={(e) => setOnlyPending(e.target.checked)} />
-            Hide declined
-          </label>
+          <div className="status-filters">
+            <label className={`chip ${statusFilters.Accepted ? "on" : "off"}`}>
+              <input type="checkbox" checked={statusFilters.Accepted} onChange={() => toggleFilter("Accepted")} />
+              Accepted
+            </label>
+            <label className={`chip ${statusFilters.Pending ? "on" : "off"}`}>
+              <input type="checkbox" checked={statusFilters.Pending} onChange={() => toggleFilter("Pending")} />
+              Pending
+            </label>
+            <label className={`chip ${statusFilters.Declined ? "on" : "off"}`}>
+              <input type="checkbox" checked={statusFilters.Declined} onChange={() => toggleFilter("Declined")} />
+              Declined
+            </label>
+            <label className={`chip ${statusFilters.Completed ? "on" : "off"}`}>
+              <input type="checkbox" checked={statusFilters.Completed} onChange={() => toggleFilter("Completed")} />
+              Completed
+            </label>
+          </div>
         </div>
         {emailNotice ? <div className="toast">{emailNotice}</div> : null}
         {error && <div className="error-message">{error}</div>}
@@ -222,7 +250,7 @@ function Orders() {
                         <td>{toMoney(order.total_amount, order.currency)}</td>
                         <td>{order.payment_status}</td>
                         <td>
-                          <span className={`badge ${displayDecision(order).toLowerCase().replace(" ", "-")}`}>{displayDecision(order)}</span>
+                          <span className={`badge ${getEffectiveStatus(order).toLowerCase() === "completed" ? "order-completed" : getEffectiveStatus(order).toLowerCase()}`}>{displayDecision(order)}</span>
                         </td>
                       </tr>
                     );
@@ -238,7 +266,15 @@ function Orders() {
                       <td>{priceItem(it.unit_price_minor)}</td>
                       <td>{idx === 0 ? toMoney(order.total_amount, order.currency) : ""}</td>
                       <td>{idx === 0 ? order.payment_status : ""}</td>
-                      <td>{idx === 0 ? <span className={`badge ${displayDecision(order).toLowerCase().replace(" ", "-")}`}>{displayDecision(order)}</span> : ""}</td>
+                      <td>
+                        {idx === 0 ? (
+                          <span className={`badge ${getEffectiveStatus(order).toLowerCase() === "completed" ? "order-completed" : getEffectiveStatus(order).toLowerCase()}`}>
+                            {displayDecision(order)}
+                          </span>
+                        ) : (
+                          ""
+                        )}
+                      </td>
                     </tr>
                   ));
                 })
