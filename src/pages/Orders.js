@@ -12,7 +12,7 @@ function Orders() {
   const [completed, setCompleted] = useState({});
   const [saving, setSaving] = useState({});
   const [search, setSearch] = useState("");
-  const [emailNotice, setEmailNotice] = useState("");
+  const [notice, setNotice] = useState("");
   const [statusFilters, setStatusFilters] = useState({
     Accepted: true,
     Pending: true,
@@ -139,9 +139,19 @@ function Orders() {
       setSelectedOrder((o) =>
         o && o.id === id ? { ...o, payment_status: "Completed", fulfill_status: "Completed", decision_status: data.order?.decision_status || o.decision_status || "Accepted" } : o
       );
+      if (data?.emailSent && (data?.whatsappSent || data?.whatsapp?.sent)) {
+        setNotice("Email and WhatsApp invoice sent");
+      } else if (data?.emailSent) {
+        setNotice("Email sent to customer");
+      } else if (data?.whatsappSent || data?.whatsapp?.sent) {
+        setNotice("WhatsApp invoice sent");
+      } else if (typeof data?.emailSent !== "undefined" || typeof data?.whatsappSent !== "undefined" || data?.whatsapp) {
+        setNotice("Notification sending failed");
+      }
+      if (notice) setTimeout(() => setNotice(""), 3000);
     } catch (e) {
-      setEmailNotice("Failed to mark completed");
-      setTimeout(() => setEmailNotice(""), 3000);
+      setNotice("Failed to mark completed");
+      setTimeout(() => setNotice(""), 3000);
     } finally {
       setSaving((s) => ({ ...s, [id]: false }));
     }
@@ -154,16 +164,19 @@ function Orders() {
       setDecisions((d) => ({ ...d, [id]: "Accepted" }));
       setOrders((list) => list.map((o) => (o.id === id ? { ...o, decision_status: "Accepted" } : o)));
       setSelectedOrder((o) => (o && o.id === id ? { ...o, local_status: "Accepted", decision_status: "Accepted" } : o));
-      if (data?.emailSent) {
-        setEmailNotice("Email sent to customer");
-        setTimeout(() => setEmailNotice(""), 2500);
-      } else if (typeof data?.emailSent !== "undefined") {
-        setEmailNotice(data?.emailError ? `Email failed: ${data.emailError}` : "Email failed");
-        setTimeout(() => setEmailNotice(""), 3500);
+      if (data?.emailSent && (data?.whatsappSent || data?.whatsapp?.sent)) {
+        setNotice("Email and WhatsApp invoice sent");
+      } else if (data?.emailSent) {
+        setNotice("Email sent to customer");
+      } else if (data?.whatsappSent || data?.whatsapp?.sent) {
+        setNotice("WhatsApp invoice sent");
+      } else if (typeof data?.emailSent !== "undefined" || typeof data?.whatsappSent !== "undefined" || data?.whatsapp) {
+        setNotice(data?.emailError ? `Notification failed: ${data.emailError}` : "Notification failed");
       }
+      setTimeout(() => setNotice(""), 3000);
     } else {
-      setEmailNotice("Failed to accept order");
-      setTimeout(() => setEmailNotice(""), 3000);
+      setNotice("Failed to accept order");
+      setTimeout(() => setNotice(""), 3000);
     }
     setSaving((s) => ({ ...s, [id]: false }));
   };
@@ -176,8 +189,8 @@ function Orders() {
       setOrders((list) => list.map((o) => (o.id === id ? { ...o, decision_status: "Declined" } : o)));
       setSelectedOrder((o) => (o && o.id === id ? { ...o, local_status: "Declined", decision_status: "Declined" } : o));
     } else {
-      setEmailNotice("Failed to decline order");
-      setTimeout(() => setEmailNotice(""), 3000);
+      setNotice("Failed to decline order");
+      setTimeout(() => setNotice(""), 3000);
     }
     setSaving((s) => ({ ...s, [id]: false }));
   };
@@ -195,18 +208,15 @@ function Orders() {
       (o.email || "").toLowerCase().includes(q) ||
       (o.payment_status || "").toLowerCase().includes(q) ||
       o.items.some((it) => (it.product_name || "").toLowerCase().includes(q));
-
     const matchesStatus = (o) => {
       const s = getEffectiveStatus(o);
       return !!statusFilters[s] && statusFilters[s] === true;
     };
-
     const rank = (o) => {
       const s = getEffectiveStatus(o);
       const m = { Accepted: 0, Pending: 1, Declined: 2, Completed: 3 };
       return m[s] ?? 1;
     };
-
     return [...orders]
       .filter((o) => matchesSearch(o) && matchesStatus(o))
       .sort((a, b) => {
@@ -249,7 +259,7 @@ function Orders() {
             </label>
           </div>
         </div>
-        {emailNotice ? <div className="toast">{emailNotice}</div> : null}
+        {notice ? <div className="toast">{notice}</div> : null}
         {error && <div className="error-message">{error}</div>}
         <div className="glass-table">
           <table>

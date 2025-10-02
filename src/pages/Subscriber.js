@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import "./Subscriber.css";
+import AdminNavbar from './AdminNavbar';
 
 const BASE_URL = "https://mahaveerpapersbe.vercel.app";
 
@@ -136,7 +137,10 @@ export default function Subscriber() {
   ];
 
   return (
+    <div className="subscriber-page">
+      <AdminNavbar />
     <div className="subs-wrap">
+      
       <div className="subs-header">
         <div className="subs-title">
           <h1>Users</h1>
@@ -330,6 +334,7 @@ export default function Subscriber() {
           {toast.msg}
         </div>
       )}
+    </div>
     </div>
   );
 }

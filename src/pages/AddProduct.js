@@ -10,6 +10,7 @@ function AddProduct() {
     model_name: '',
     brand: '',
     category_slug: '',
+    hsn_code: '',
     price: '',
     discount_b2b: '',
     discount_b2c: '',
@@ -64,6 +65,11 @@ function AddProduct() {
       setFormData((prev) => ({ ...prev, [name]: normalized }));
       return;
     }
+    if (name === 'hsn_code') {
+      const v = value.toUpperCase().replace(/[^0-9A-Z]/g, '').slice(0, 8);
+      setFormData((prev) => ({ ...prev, [name]: v }));
+      return;
+    }
     setFormData((prev) => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
   };
 
@@ -114,6 +120,11 @@ function AddProduct() {
       return;
     }
 
+    if (formData.hsn_code && !(formData.hsn_code.length === 6 || formData.hsn_code.length === 8)) {
+      setMessage('❌ HSN must be 6 or 8 characters');
+      return;
+    }
+
     if (mode === 'open' && newSlug) await handleCategoryInsert(productCategory);
     if (mode === 'specific' && newSlug && selectedNode) await handleCategoryInsert(productCategory);
 
@@ -122,6 +133,7 @@ function AddProduct() {
     fd.append('model_name', formData.model_name);
     fd.append('brand', formData.brand);
     fd.append('category_slug', productCategory);
+    fd.append('hsn_code', formData.hsn_code || '');
     fd.append('price', formData.price || '');
     fd.append('discount_b2b', formData.discount_b2b === '' ? '0' : String(formData.discount_b2b));
     fd.append('discount_b2c', formData.discount_b2c === '' ? '0' : String(formData.discount_b2c));
@@ -140,6 +152,7 @@ function AddProduct() {
           model_name: '',
           brand: '',
           category_slug: '',
+          hsn_code: '',
           price: '',
           discount_b2b: '',
           discount_b2c: '',
@@ -168,117 +181,108 @@ function AddProduct() {
     ));
 
   return (
-    <div className='main-entry'>
-      
+    <div className="main-entry">
       <AdminNavbar />
-    <div className="addProduct-root">
-      <div className="addProduct-container">
-        <h2 className="addProduct-title">Add Product</h2>
+      <div className="addProduct-root">
+        <div className="addProduct-container">
+          <h2 className="addProduct-title">Add Product</h2>
 
-        <div className="navlink-mode">
-          <button
-            type="button"
-            className={mode === 'open' ? 'mode-btn active' : 'mode-btn'}
-            onClick={() => {
-              setMode('open');
-              setSelectedNode(null);
-            }}
-          >
-            Open Header
-          </button>
-          <button
-            type="button"
-            className={mode === 'specific' ? 'mode-btn active' : 'mode-btn'}
-            onClick={() => setMode('specific')}
-          >
-            Specific Location
-          </button>
-          
-          {/*<button
-            type="button"
-            className={!mode ? 'mode-btn active' : 'mode-btn'}
-            onClick={() => {
-              setMode('');
-              setSelectedNode(null);
-              setNewSlug('');
-            }}
-          >
-            Existing Category Only
-          </button> */}
-        </div>
-
-        {mode === 'open' && (
-          <div className="new-navlink-form">
-            <label>Category Slug</label>
-            <input
-              value={newSlug}
-              onChange={(e) => setNewSlug(normalize(e.target.value))}
-              placeholder="e.g. brushes"
-            />
-          </div>
-        )}
-
-        {mode === 'specific' && (
-          <div className="specific-location-form">
-            <label>Place Under</label>
-            <select
-              value={selectedNode?.slugKey || ''}
-              onChange={(e) => setSelectedNode(findNodeBySlugKey(navTree, e.target.value))}
+          <div className="navlink-mode">
+            <button
+              type="button"
+              className={mode === 'open' ? 'mode-btn active' : 'mode-btn'}
+              onClick={() => {
+                setMode('open');
+                setSelectedNode(null);
+              }}
             >
-              <option value="">Select location</option>
-              {renderNavOptions(navTree)}
-            </select>
-            <label>Category Slug</label>
-            <input
-              value={newSlug}
-              onChange={(e) => setNewSlug(normalize(e.target.value))}
-              placeholder="e.g. resin-sheets"
-            />
+              Open Header
+            </button>
+            <button
+              type="button"
+              className={mode === 'specific' ? 'mode-btn active' : 'mode-btn'}
+              onClick={() => setMode('specific')}
+            >
+              Specific Location
+            </button>
+            <button
+              type="button"
+              className={!mode ? 'mode-btn active' : 'mode-btn'}
+              onClick={() => {
+                setMode('');
+                setSelectedNode(null);
+                setNewSlug('');
+              }}
+            >
+              Existing Category
+            </button>
           </div>
-        )}
 
-        <form className="addProduct-form" onSubmit={handleSubmit}>
-          <input name="name" value={formData.name} onChange={handleChange} placeholder="Name" required />
-          <input name="model_name" value={formData.model_name} onChange={handleChange} placeholder="Model Name" />
-          <input name="brand" value={formData.brand} onChange={handleChange} placeholder="Brand" required />
-
-          {!mode && (
-            <input
-              name="category_slug"
-              value={formData.category_slug}
-              onChange={handleChange}
-              placeholder="Existing Category Slug (e.g. brushes)"
-              required
-            />
+          {mode === 'open' && (
+            <div className="new-navlink-form">
+              <label>Category Slug</label>
+              <input value={newSlug} onChange={(e) => setNewSlug(normalize(e.target.value))} placeholder="e.g. brushes" />
+            </div>
           )}
 
-          <div className="price-row">
-            <input name="price" type="number" step="0.01" min="0" value={formData.price} onChange={handleChange} placeholder="Base Price" required />
-            <input name="discount_b2b" type="number" step="1" min="0" max="100" value={formData.discount_b2b} onChange={handleChange} placeholder="Discount % B2B" />
-            <input name="discount_b2c" type="number" step="1" min="0" max="100" value={formData.discount_b2c} onChange={handleChange} placeholder="Discount % B2C" />
-          </div>
+          {mode === 'specific' && (
+            <div className="specific-location-form">
+              <label>Place Under</label>
+              <select value={selectedNode?.slugKey || ''} onChange={(e) => setSelectedNode(findNodeBySlugKey(navTree, e.target.value))}>
+                <option value="">Select location</option>
+                {renderNavOptions(navTree)}
+              </select>
+              <label>Category Slug</label>
+              <input value={newSlug} onChange={(e) => setNewSlug(normalize(e.target.value))} placeholder="e.g. resin-sheets" />
+            </div>
+          )}
 
-          <div className="price-preview">
-            <span><strong>Preview:</strong></span>
-            <span> B2B: {priceAfterB2B ? `₹${priceAfterB2B}` : '-'}</span>
-            <span> B2C: {priceAfterB2C ? `₹${priceAfterB2C}` : '-'}</span>
-          </div>
+          <form className="addProduct-form" onSubmit={handleSubmit}>
+            <div className="grid-2">
+              <input name="name" value={formData.name} onChange={handleChange} placeholder="Name" required />
+              <input name="model_name" value={formData.model_name} onChange={handleChange} placeholder="Model Name" />
+            </div>
 
-          <textarea name="description" value={formData.description} onChange={handleChange} placeholder="Description" required />
-          <input name="imageUrls" value={formData.imageUrls} onChange={handleChange} placeholder="Image URLs (comma-separated or single data URL)" />
-          <input type="file" multiple accept="image/*" onChange={handleFileChange} />
+            <div className="grid-2">
+              <input name="brand" value={formData.brand} onChange={handleChange} placeholder="Brand" required />
+              {!mode && (
+                <input name="category_slug" value={formData.category_slug} onChange={handleChange} placeholder="Existing Category Slug (e.g. brushes)" required />
+              )}
+            </div>
 
-          <label className="published-checkbox">
-            <input type="checkbox" name="published" checked={formData.published} onChange={handleChange} />
-            Published
-          </label>
+            <div className="grid-3">
+              <input name="hsn_code" value={formData.hsn_code} onChange={handleChange} placeholder="HSN Code (6 or 8)" />
+              <input name="price" type="number" step="0.01" min="0" value={formData.price} onChange={handleChange} placeholder="Base Price" required />
+              <input name="discount_b2b" type="number" step="1" min="0" max="100" value={formData.discount_b2b} onChange={handleChange} placeholder="Discount % B2B" />
+            </div>
 
-          <button type="submit" className="submit-btn">Submit Product</button>
-        </form>
+            <div className="grid-2">
+              <input name="discount_b2c" type="number" step="1" min="0" max="100" value={formData.discount_b2c} onChange={handleChange} placeholder="Discount % B2C" />
+              <input name="imageUrls" value={formData.imageUrls} onChange={handleChange} placeholder="Image URLs (comma-separated or single data URL)" />
+            </div>
 
-        {message && <p className="submit-message">{message}</p>}
+            <div className="price-preview">
+              <span><strong>Preview:</strong></span>
+              <span>B2B: {priceAfterB2B ? `₹${priceAfterB2B}` : '-'}</span>
+              <span>B2C: {priceAfterB2C ? `₹${priceAfterB2C}` : '-'}</span>
+            </div>
+
+            <textarea name="description" value={formData.description} onChange={handleChange} placeholder="Description" required />
+
+            <div className="uploader-row">
+              <input type="file" multiple accept="image/*" onChange={handleFileChange} />
+              <label className="published-checkbox">
+                <input type="checkbox" name="published" checked={formData.published} onChange={handleChange} />
+                Published
+              </label>
+            </div>
+
+            <button type="submit" className="submit-btn">Submit Product</button>
+          </form>
+
+          {message && <p className="submit-message">{message}</p>}
+        </div>
       </div>
-    </div>
     </div>
   );
 }
