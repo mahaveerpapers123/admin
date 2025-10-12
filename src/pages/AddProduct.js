@@ -11,9 +11,15 @@ function AddProduct() {
     brand: '',
     category_slug: '',
     hsn_code: '',
-    price: '',
+    hsn_percentage: '',
+    mrp: '',
+    mahaveer_price: '',
     discount_b2b: '',
     discount_b2c: '',
+    weight: '',
+    length: '',
+    width: '',
+    height: '',
     description: '',
     imageUrls: '',
     published: true,
@@ -37,13 +43,13 @@ function AddProduct() {
   }, []);
 
   const { priceAfterB2B, priceAfterB2C } = useMemo(() => {
-    const price = parseFloat(formData.price || '0') || 0;
+    const base = parseFloat(formData.mahaveer_price || '0') || 0;
     const dB2B = Math.min(Math.max(parseFloat(formData.discount_b2b || '0') || 0, 0), 100);
     const dB2C = Math.min(Math.max(parseFloat(formData.discount_b2c || '0') || 0, 0), 100);
-    const priceAfterB2B = price ? +(price * (1 - dB2B / 100)).toFixed(2) : 0;
-    const priceAfterB2C = price ? +(price * (1 - dB2C / 100)).toFixed(2) : 0;
+    const priceAfterB2B = base ? +(base * (1 - dB2B / 100)).toFixed(2) : 0;
+    const priceAfterB2C = base ? +(base * (1 - dB2C / 100)).toFixed(2) : 0;
     return { priceAfterB2B, priceAfterB2C };
-  }, [formData.price, formData.discount_b2b, formData.discount_b2c]);
+  }, [formData.mahaveer_price, formData.discount_b2b, formData.discount_b2c]);
 
   const normalize = (v) =>
     String(v || '')
@@ -56,7 +62,7 @@ function AddProduct() {
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
-    if ((name === 'discount_b2b' || name === 'discount_b2c') && value !== '') {
+    if ((name === 'discount_b2b' || name === 'discount_b2c' || name === 'hsn_percentage') && value !== '') {
       const asNumber = Number(value);
       if (Number.isNaN(asNumber) || asNumber < 0 || asNumber > 100) return;
     }
@@ -114,10 +120,39 @@ function AddProduct() {
       return;
     }
 
-    const priceNum = parseFloat(formData.price || '0');
-    if (Number.isNaN(priceNum) || priceNum < 0) {
-      setMessage('❌ Price must be a non-negative number');
+    const mahaveerNum = parseFloat(formData.mahaveer_price || '0');
+    if (Number.isNaN(mahaveerNum) || mahaveerNum < 0) {
+      setMessage('❌ Mahaveer Price must be a non-negative number');
       return;
+    }
+
+    if (formData.mrp !== '') {
+      const mrpNum = parseFloat(formData.mrp);
+      if (Number.isNaN(mrpNum) || mrpNum < 0) {
+        setMessage('❌ MRP must be a non-negative number');
+        return;
+      }
+      if (!Number.isNaN(mahaveerNum) && mrpNum < mahaveerNum) {
+        setMessage('❌ MRP must be ≥ Mahaveer Price');
+        return;
+      }
+    }
+
+    if (formData.hsn_percentage !== '') {
+      const h = Number(formData.hsn_percentage);
+      if (Number.isNaN(h) || h < 0 || h > 100) {
+        setMessage('❌ HSN Percentage must be between 0 and 100');
+        return;
+      }
+    }
+
+    const dimFields = ['weight', 'length', 'width', 'height'];
+    for (const f of dimFields) {
+      const v = formData[f];
+      if (v !== '' && (Number.isNaN(Number(v)) || Number(v) < 0)) {
+        setMessage(`❌ ${f.charAt(0).toUpperCase() + f.slice(1)} must be a non-negative number`);
+        return;
+      }
     }
 
     if (formData.hsn_code && !(formData.hsn_code.length === 6 || formData.hsn_code.length === 8)) {
@@ -134,9 +169,16 @@ function AddProduct() {
     fd.append('brand', formData.brand);
     fd.append('category_slug', productCategory);
     fd.append('hsn_code', formData.hsn_code || '');
-    fd.append('price', formData.price || '');
+    fd.append('hsn_percentage', formData.hsn_percentage === '' ? '' : String(formData.hsn_percentage));
+    fd.append('mrp', formData.mrp || '');
+    fd.append('mahaveer_price', formData.mahaveer_price || '');
+    fd.append('price', formData.mahaveer_price || '');
     fd.append('discount_b2b', formData.discount_b2b === '' ? '0' : String(formData.discount_b2b));
     fd.append('discount_b2c', formData.discount_b2c === '' ? '0' : String(formData.discount_b2c));
+    fd.append('weight', formData.weight === '' ? '' : String(formData.weight));
+    fd.append('length', formData.length === '' ? '' : String(formData.length));
+    fd.append('width', formData.width === '' ? '' : String(formData.width));
+    fd.append('height', formData.height === '' ? '' : String(formData.height));
     fd.append('description', formData.description);
     fd.append('published', String(formData.published));
     if (formData.imageUrls) fd.append('imageUrls', formData.imageUrls);
@@ -153,9 +195,15 @@ function AddProduct() {
           brand: '',
           category_slug: '',
           hsn_code: '',
-          price: '',
+          hsn_percentage: '',
+          mrp: '',
+          mahaveer_price: '',
           discount_b2b: '',
           discount_b2c: '',
+          weight: '',
+          length: '',
+          width: '',
+          height: '',
           description: '',
           imageUrls: '',
           published: true,
@@ -250,19 +298,30 @@ function AddProduct() {
               )}
             </div>
 
-            <div className="grid-3">
+            <div className="grid-6">
               <input name="hsn_code" value={formData.hsn_code} onChange={handleChange} placeholder="HSN Code (6 or 8)" />
-              <input name="price" type="number" step="0.01" min="0" value={formData.price} onChange={handleChange} placeholder="Base Price" required />
+              <input name="hsn_percentage" type="number" step="0.01" min="0" max="100" value={formData.hsn_percentage} onChange={handleChange} placeholder="HSN %" />
+              <input name="mrp" type="number" step="0.01" min="0" value={formData.mrp} onChange={handleChange} placeholder="MRP" />
+              <input name="mahaveer_price" type="number" step="0.01" min="0" value={formData.mahaveer_price} onChange={handleChange} placeholder="Mahaveer Price" required />
               <input name="discount_b2b" type="number" step="1" min="0" max="100" value={formData.discount_b2b} onChange={handleChange} placeholder="Discount % B2B" />
+              <input name="discount_b2c" type="number" step="1" min="0" max="100" value={formData.discount_b2c} onChange={handleChange} placeholder="Discount % B2C" />
             </div>
 
-            <div className="grid-2">
-              <input name="discount_b2c" type="number" step="1" min="0" max="100" value={formData.discount_b2c} onChange={handleChange} placeholder="Discount % B2C" />
+            <div className="grid-4">
+              <input name="weight" type="number" step="0.001" min="0" value={formData.weight} onChange={handleChange} placeholder="Weight" />
+              <input name="length" type="number" step="0.01" min="0" value={formData.length} onChange={handleChange} placeholder="Length" />
+              <input name="width" type="number" step="0.01" min="0" value={formData.width} onChange={handleChange} placeholder="Width" />
+              <input name="height" type="number" step="0.01" min="0" value={formData.height} onChange={handleChange} placeholder="Height" />
+            </div>
+
+            <div className="grid-1">
               <input name="imageUrls" value={formData.imageUrls} onChange={handleChange} placeholder="Image URLs (comma-separated or single data URL)" />
             </div>
 
             <div className="price-preview">
               <span><strong>Preview:</strong></span>
+              <span>MRP: {formData.mrp ? `₹${Number(formData.mrp).toFixed(2)}` : '-'}</span>
+              <span>Mahaveer: {formData.mahaveer_price ? `₹${Number(formData.mahaveer_price).toFixed(2)}` : '-'}</span>
               <span>B2B: {priceAfterB2B ? `₹${priceAfterB2B}` : '-'}</span>
               <span>B2C: {priceAfterB2C ? `₹${priceAfterB2C}` : '-'}</span>
             </div>
