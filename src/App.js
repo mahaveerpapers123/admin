@@ -3,22 +3,18 @@ import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import Orders from './pages/Orders';
 import AddCatalog from './pages/AddCatalog';
 import AddProduct from './pages/AddProduct';
+import AddBulkProduct from './pages/AddBulkProduct';
 import Subscriber from './pages/Subscriber';
-
 
 function App() {
   return (
     <Router>
       <Routes>
-
         <Route path="/" element={<Orders />} />
-
         <Route path="/add-catalog" element={<AddCatalog />} />
-
         <Route path="/add-product" element={<AddProduct />} />
-        <Route path="subscribers" element={<Subscriber />}/>
-
-
+        <Route path="/add-bulk-product" element={<AddBulkProduct />} />
+        <Route path="subscribers" element={<Subscriber />} />
       </Routes>
     </Router>
   );

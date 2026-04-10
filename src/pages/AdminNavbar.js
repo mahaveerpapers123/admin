@@ -1,6 +1,10 @@
 import React, { useState } from 'react';
 import {
-  FaClipboardList, FaFilePdf, FaPlusSquare, FaUsers, FaBars
+  FaClipboardList,
+  FaPlusSquare,
+  FaUsers,
+  FaBars,
+  FaFileImport
 } from 'react-icons/fa';
 import { useLocation, Link } from 'react-router-dom';
 import './AdminNavbar.css';
@@ -14,7 +18,8 @@ function AdminNavbar() {
   const navItems = [
     { path: '/', label: 'Orders', icon: <FaClipboardList /> },
     { path: '/add-product', label: 'Products', icon: <FaPlusSquare /> },
-    { path: '/subscribers', label: 'Subscribers', icon: <FaUsers /> } 
+    { path: '/add-bulk-product', label: 'Bulk Upload', icon: <FaFileImport /> },
+    { path: '/subscribers', label: 'Subscribers', icon: <FaUsers /> }
   ];
 
   return (
@@ -22,7 +27,7 @@ function AdminNavbar() {
       <nav className="admin-navbar">
         <div className="admin-brand">Mahaveer Enterprises</div>
         <div className="admin-nav-links">
-          {navItems.map(item => (
+          {navItems.map((item) => (
             <Link
               key={item.path}
               to={item.path}
@@ -33,14 +38,17 @@ function AdminNavbar() {
             </Link>
           ))}
         </div>
-        <div className="admin-hamburger" onClick={() => setShowMobileMenu(!showMobileMenu)}>
+        <div
+          className="admin-hamburger"
+          onClick={() => setShowMobileMenu(!showMobileMenu)}
+        >
           <FaBars />
         </div>
       </nav>
 
       {showMobileMenu && (
         <div className="admin-mobile-menu">
-          {navItems.map(item => (
+          {navItems.map((item) => (
             <Link
               key={item.path}
               to={item.path}
