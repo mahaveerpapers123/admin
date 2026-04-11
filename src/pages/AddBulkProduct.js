@@ -3,7 +3,7 @@ import * as XLSX from 'xlsx';
 import './AddBulkProduct.css';
 import AdminNavbar from './AdminNavbar';
 
-const API_BASE = process.env.REACT_APP_API_BASE || 'http://localhost:5000';
+const API_BASE = process.env.REACT_APP_API_BASE || 'https://mahaveerpapersbe.vercel.app';
 
 const PRODUCT_FIELDS = [
   { key: 'name', label: 'Name' },
@@ -503,7 +503,6 @@ function AddBulkProduct() {
       <div className="addProduct-root-final">
         <div className="addProduct-container-final" style={{ maxWidth: '1200px' }}>
           <h2 className="addProduct-title-final">Bulk Product Upload</h2>
-
           <div className="upload-cards-grid-final">
             <div className="upload-card-final">
               <div className="upload-card-head-final">
