@@ -1,9 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import * as XLSX from 'xlsx';
+import JSZip from 'jszip';
 import './AddBulkProduct.css';
 import AdminNavbar from './AdminNavbar';
 
 const API_BASE = process.env.REACT_APP_API_BASE || 'https://mahaveerpapersbe.vercel.app';
+const CLOUDINARY_CLOUD_NAME = process.env.REACT_APP_CLOUDINARY_CLOUD_NAME || 'dsneschok';
+const CLOUDINARY_UPLOAD_PRESET = process.env.REACT_APP_CLOUDINARY_UPLOAD_PRESET || 'mahaveer_unsigned';
+const CLOUDINARY_FOLDER = process.env.REACT_APP_CLOUDINARY_FOLDER || 'mahaveer-products';
 
 const PRODUCT_FIELDS = [
   { key: 'name', label: 'Name' },
@@ -32,6 +36,12 @@ const normalize = (v) =>
     .replace(/[^a-z0-9-]/g, '-')
     .replace(/-+/g, '-')
     .replace(/^-+|-+$/g, '');
+
+const sanitizeHsn = (v) =>
+  String(v || '')
+    .toUpperCase()
+    .replace(/[^0-9A-Z]/g, '')
+    .slice(0, 8);
 
 const toText = (v) => String(v ?? '').trim();
 
@@ -129,6 +139,19 @@ const findNodeBySlugKey = (nodes, key) => {
   return null;
 };
 
+const isImagePath = (p) => {
+  const n = String(p || '').toLowerCase();
+  return n.endsWith('.jpg') || n.endsWith('.jpeg') || n.endsWith('.png') || n.endsWith('.webp') || n.endsWith('.avif');
+};
+
+const baseNameNoExt = (name) => {
+  const n = String(name || '').split('/').pop() || '';
+  const i = n.lastIndexOf('.');
+  return i > 0 ? n.slice(0, i) : n;
+};
+
+const extractHsnFromPath = (path) => sanitizeHsn(baseNameNoExt(path));
+
 function AddBulkProduct() {
   const workbookDataRef = useRef([]);
   const excelInputRef = useRef(null);
@@ -152,6 +175,8 @@ function AddBulkProduct() {
   const [zipSummary, setZipSummary] = useState({ uploadedCount: 0, linkedProducts: 0, skippedCount: 0 });
   const [selectedExcelFile, setSelectedExcelFile] = useState(null);
   const [selectedZipFile, setSelectedZipFile] = useState(null);
+  const [zipProgress, setZipProgress] = useState({ done: 0, total: 0 });
+  const [unmatchedImages, setUnmatchedImages] = useState([]);
 
   useEffect(() => {
     const fetchNav = async () => {
@@ -194,6 +219,9 @@ function AddBulkProduct() {
     const file = e.target.files?.[0] || null;
     setSelectedZipFile(file);
     setMessage('');
+    setZipSummary({ uploadedCount: 0, linkedProducts: 0, skippedCount: 0 });
+    setZipProgress({ done: 0, total: 0 });
+    setUnmatchedImages([]);
   };
 
   const handleWorkbookUpload = async () => {
@@ -305,7 +333,7 @@ function AddBulkProduct() {
       model_name: toText(row[mapping.model_name]),
       brand: toText(row[mapping.brand]),
       category_slug: resolveCategorySlug(row, sheetName),
-      hsn_code: toText(row[mapping.hsn_code]).replace(/[^0-9A-Z]/gi, '').slice(0, 8),
+      hsn_code: sanitizeHsn(row[mapping.hsn_code]),
       hsn_percentage: toPctString(rawHsnPct),
       mrp: toNumberString(rawMrp),
       mahaveer_price: toNumberString(rawMahaveer || rawMrp),
@@ -370,39 +398,113 @@ function AddBulkProduct() {
     return data;
   };
 
+  const uploadToCloudinary = async (fileBlob, hsnCode) => {
+    const form = new FormData();
+    form.append('file', fileBlob);
+    form.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+    form.append('folder', CLOUDINARY_FOLDER);
+    form.append('public_id', hsnCode);
+
+    const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`, {
+      method: 'POST',
+      body: form,
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.error?.message || data.message || 'Cloudinary upload failed');
+    }
+    return data;
+  };
+
+  const linkImageByHsn = async (hsnCode, imageUrl) => {
+    const res = await fetch(`${API_BASE}/api/products/link-image-by-hsn`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ hsn_code: hsnCode, image_url: imageUrl }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.error || 'Failed to link image');
+    }
+    return data;
+  };
+
   const handleZipUpload = async () => {
     if (!selectedZipFile) {
       setMessage('❌ Please choose a ZIP file');
       return;
     }
 
+    if (!CLOUDINARY_CLOUD_NAME || !CLOUDINARY_UPLOAD_PRESET) {
+      setMessage('❌ Cloudinary frontend configuration is missing');
+      return;
+    }
+
     setZipUploading(true);
     setMessage('');
+    setZipSummary({ uploadedCount: 0, linkedProducts: 0, skippedCount: 0 });
+    setZipProgress({ done: 0, total: 0 });
+    setUnmatchedImages([]);
 
     try {
-      const fd = new FormData();
-      fd.append('zipFile', selectedZipFile);
+      const zip = await JSZip.loadAsync(selectedZipFile);
+      const entries = Object.values(zip.files).filter((f) => !f.dir && isImagePath(f.name));
 
-      const res = await fetch(`${API_BASE}/api/products/upload-zip-images`, {
-        method: 'POST',
-        body: fd,
-      });
-
-      const data = await res.json().catch(() => ({}));
-
-      if (!res.ok) {
-        setMessage(`❌ ${data.error || 'ZIP upload failed'}`);
+      if (!entries.length) {
+        setMessage('❌ No image files found inside ZIP');
         return;
       }
 
+      let uploadedCount = 0;
+      let linkedProducts = 0;
+      let skippedCount = 0;
+      const unmatched = [];
+
+      setZipProgress({ done: 0, total: entries.length });
+
+      for (let i = 0; i < entries.length; i += 1) {
+        const entry = entries[i];
+        const hsnCode = extractHsnFromPath(entry.name);
+
+        if (!hsnCode) {
+          skippedCount += 1;
+          unmatched.push({ file: entry.name, hsn_code: '' });
+          setZipProgress({ done: i + 1, total: entries.length });
+          continue;
+        }
+
+        try {
+          const blob = await entry.async('blob');
+          const uploadResult = await uploadToCloudinary(blob, hsnCode);
+          uploadedCount += 1;
+
+          try {
+            const linkResult = await linkImageByHsn(hsnCode, uploadResult.secure_url);
+            linkedProducts += Number(linkResult.linkedProducts || 0);
+            if (!Number(linkResult.linkedProducts || 0)) {
+              unmatched.push({ file: entry.name, hsn_code: hsnCode });
+            }
+          } catch {
+            unmatched.push({ file: entry.name, hsn_code: hsnCode });
+          }
+        } catch {
+          skippedCount += 1;
+          unmatched.push({ file: entry.name, hsn_code: hsnCode });
+        }
+
+        setZipProgress({ done: i + 1, total: entries.length });
+      }
+
+      setUnmatchedImages(unmatched);
       setZipSummary({
-        uploadedCount: Number(data.uploadedCount || 0),
-        linkedProducts: Number(data.linkedProducts || 0),
-        skippedCount: Number(data.skippedCount || 0),
+        uploadedCount,
+        linkedProducts,
+        skippedCount: skippedCount + Math.max(0, unmatched.filter((x) => x.hsn_code).length - linkedProducts),
       });
 
       setMessage(
-        `✅ ZIP uploaded successfully. Uploaded: ${Number(data.uploadedCount || 0)}, Linked Products: ${Number(data.linkedProducts || 0)}, Skipped: ${Number(data.skippedCount || 0)}`
+        `✅ ZIP processed successfully. Uploaded: ${uploadedCount}, Linked Products: ${linkedProducts}, Unmatched/Skipped: ${unmatched.length + skippedCount}`
       );
 
       setSelectedZipFile(null);
@@ -547,7 +649,7 @@ function AddBulkProduct() {
               <div className="upload-card-head-final">
                 <div>
                   <h3 className="upload-card-title-final">Images ZIP Upload</h3>
-                  <p className="upload-card-subtitle-final">Choose the ZIP file first, then click the upload button.</p>
+                  <p className="upload-card-subtitle-final">ZIP is processed in browser and images are uploaded directly to Cloudinary.</p>
                 </div>
                 <div className="upload-badge-final zip-final">
                   {zipSummary.uploadedCount} Uploaded
@@ -572,7 +674,7 @@ function AddBulkProduct() {
                   onClick={handleZipUpload}
                   disabled={!selectedZipFile || zipUploading || importing}
                 >
-                  {zipUploading ? 'Uploading ZIP...' : 'Upload ZIP'}
+                  {zipUploading ? `Uploading ${zipProgress.done}/${zipProgress.total || 0}...` : 'Upload ZIP'}
                 </button>
               </div>
 
@@ -581,6 +683,19 @@ function AddBulkProduct() {
                 <span><strong>Products Linked:</strong> {zipSummary.linkedProducts}</span>
                 <span><strong>ZIP Skipped:</strong> {zipSummary.skippedCount}</span>
               </div>
+
+              {unmatchedImages.length ? (
+                <div style={{ marginTop: 12, maxHeight: 180, overflow: 'auto', border: '1px solid #e5e7eb', borderRadius: 10, padding: 10 }}>
+                  <strong>Unmatched Files</strong>
+                  <ul style={{ margin: '8px 0 0', paddingLeft: 18 }}>
+                    {unmatchedImages.slice(0, 100).map((item, idx) => (
+                      <li key={`${item.file}-${idx}`}>
+                        {item.hsn_code ? `${item.hsn_code} - ${item.file}` : item.file}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
             </div>
           </div>
 
@@ -788,15 +903,26 @@ function AddBulkProduct() {
                 <div
                   className="bulk-progress-fill-final"
                   style={{
-                    width: `${progress.total ? (progress.done / progress.total) * 100 : 0}%`,
+                    width: `${(zipUploading ? zipProgress.total : progress.total) ? (((zipUploading ? zipProgress.done : progress.done) / (zipUploading ? zipProgress.total : progress.total)) * 100) : 0}%`,
                   }}
                 />
               </div>
               <div className="bulk-progress-stats-final">
-                <span>Total: {progress.total}</span>
-                <span>Done: {progress.done}</span>
-                <span>Success: {progress.success}</span>
-                <span>Failed: {progress.failed}</span>
+                {zipUploading ? (
+                  <>
+                    <span>Total: {zipProgress.total}</span>
+                    <span>Done: {zipProgress.done}</span>
+                    <span>Uploaded: {zipSummary.uploadedCount}</span>
+                    <span>Linked: {zipSummary.linkedProducts}</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Total: {progress.total}</span>
+                    <span>Done: {progress.done}</span>
+                    <span>Success: {progress.success}</span>
+                    <span>Failed: {progress.failed}</span>
+                  </>
+                )}
               </div>
             </div>
           ) : null}
