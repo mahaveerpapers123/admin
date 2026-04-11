@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useCallback } from "react";
 import "./Orders.css";
 import AdminNavbar from "./AdminNavbar";
 
@@ -286,13 +286,17 @@ function Orders() {
     setSaving((s) => ({ ...s, [id]: false }));
   };
 
-  const getDecision = (order) => decisions[order.id] || order.decision_status || "Pending";
-  const getEffectiveStatus = (order) =>
-    completed[order.id] || (order.fulfill_status || "").toLowerCase() === "completed"
+  const getDecision = useCallback((order) => decisions[order.id] || order.decision_status || "Pending", [decisions]);
+
+  const getEffectiveStatus = useCallback((order) => {
+    return completed[order.id] || (order.fulfill_status || "").toLowerCase() === "completed"
       ? "Completed"
       : getDecision(order);
+  }, [completed, getDecision]);
+
   const displayDecision = (order) =>
     getEffectiveStatus(order) === "Completed" ? "Order completed" : getEffectiveStatus(order);
+
   const displayPayment = (order) =>
     completed[order.id] || (order.fulfill_status || "").toLowerCase() === "completed"
       ? "Completed"
@@ -325,7 +329,7 @@ function Orders() {
         const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
         return tb - ta;
       });
-  }, [orders, search, decisions, completed, statusFilters]);
+  }, [orders, search, statusFilters, getEffectiveStatus]);
 
   const toggleFilter = (key) => {
     setStatusFilters((f) => ({ ...f, [key]: !f[key] }));

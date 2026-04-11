@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import * as XLSX from 'xlsx';
 import './AddBulkProduct.css';
 import AdminNavbar from './AdminNavbar';
@@ -272,13 +272,13 @@ function AddBulkProduct() {
     );
   };
 
-  const resolveCategorySlug = (row, sheetName) => {
+  const resolveCategorySlug = useCallback((row, sheetName) => {
     if (categorySource === 'fixed') return normalize(fixedCategorySlug);
     if (categorySource === 'group') return normalize(row['GROUP NAME']);
     return normalize(sheetName);
-  };
+  }, [categorySource, fixedCategorySlug]);
 
-  const buildDescription = (row, mappedDescription, nameValue) => {
+  const buildDescription = useCallback((row, mappedDescription, nameValue) => {
     const base = toText(mappedDescription);
     if (base) return base;
 
@@ -291,9 +291,9 @@ function AddBulkProduct() {
 
     if (parts.length) return parts.join(' | ');
     return toText(nameValue);
-  };
+  }, []);
 
-  const buildProductPayload = (row, sheetName) => {
+  const buildProductPayload = useCallback((row, sheetName) => {
     const rawMrp = row[mapping.mrp] ?? '';
     const rawMahaveer = row[mapping.mahaveer_price] ?? rawMrp;
     const rawHsnPct = row[mapping.hsn_percentage] ?? '';
@@ -320,9 +320,9 @@ function AddBulkProduct() {
       imageUrls: toText(row[mapping.imageUrls]),
       published,
     };
-  };
+  }, [mapping, published, resolveCategorySlug, buildDescription]);
 
-  const getImportRows = () => {
+  const getImportRows = useCallback(() => {
     const selectedData = workbookDataRef.current.filter((sheet) => selectedSheets.includes(sheet.sheetName));
     return selectedData
       .flatMap((sheet) =>
@@ -333,9 +333,9 @@ function AddBulkProduct() {
         }))
       )
       .filter((entry) => entry.payload.name && entry.payload.brand && entry.payload.category_slug && entry.payload.mahaveer_price);
-  };
+  }, [selectedSheets, buildProductPayload]);
 
-  const ensureCategories = async (rows) => {
+  const ensureCategories = useCallback(async (rows) => {
     if (mode !== 'open' && mode !== 'specific') return;
 
     const categories = unique(rows.map((entry) => entry.payload.category_slug));
@@ -355,7 +355,7 @@ function AddBulkProduct() {
         });
       } catch {}
     }
-  };
+  }, [mode, selectedNode]);
 
   const uploadChunk = async (products) => {
     const res = await fetch(`${API_BASE}/api/products/bulk-json`, {
@@ -495,7 +495,7 @@ function AddBulkProduct() {
       mahaveer_price: entry.payload.mahaveer_price,
       hsn_code: entry.payload.hsn_code,
     }));
-  }, [sheetSummaries, selectedSheets, mapping, categorySource, fixedCategorySlug, published]);
+  }, [getImportRows]);
 
   return (
     <div className="main-entry-final">
