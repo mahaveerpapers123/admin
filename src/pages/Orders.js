@@ -11,6 +11,9 @@ function Orders() {
   const [decisions, setDecisions] = useState({});
   const [completed, setCompleted] = useState({});
   const [saving, setSaving] = useState({});
+  const [shipLoading, setShipLoading] = useState({});
+  const [couriersByOrder, setCouriersByOrder] = useState({});
+  const [trackingByOrder, setTrackingByOrder] = useState({});
   const [search, setSearch] = useState("");
   const [notice, setNotice] = useState("");
   const [statusFilters, setStatusFilters] = useState({
@@ -47,6 +50,16 @@ function Orders() {
               items = [];
             }
           }
+
+          let shippingAddr = order.shipping_addr || order.shipping_address || order.address || order.shipping || null;
+          if (typeof shippingAddr === "string") {
+            try {
+              shippingAddr = JSON.parse(shippingAddr);
+            } catch {
+              shippingAddr = null;
+            }
+          }
+
           const itemsNorm = items.map((it) => ({
             product_name: it.product_name ?? it.name ?? "",
             image_url: it.image_url ?? it.image ?? (Array.isArray(it.images) ? it.images[0] : "") ?? "",
@@ -76,8 +89,10 @@ function Orders() {
             hsn_percentage: it.hsn_percentage ?? "",
             mrp: it.mrp ?? it.MRP ?? "",
           }));
-          return { ...order, items: itemsNorm };
+
+          return { ...order, shipping_addr: shippingAddr, items: itemsNorm };
         });
+
         setOrders(normalized);
         setDecisions((prev) => {
           const next = { ...prev };
@@ -99,6 +114,139 @@ function Orders() {
     };
     fetchOrders();
   }, []);
+
+  const flashNotice = (message) => {
+    setNotice(message);
+    setTimeout(() => setNotice(""), 3000);
+  };
+
+  const setOrderPatch = (id, patch) => {
+    setOrders((list) => list.map((o) => (o.id === id ? { ...o, ...patch } : o)));
+    setSelectedOrder((o) => (o && o.id === id ? { ...o, ...patch } : o));
+  };
+
+  const withShipLoading = async (id, fn) => {
+    setShipLoading((s) => ({ ...s, [id]: true }));
+    try {
+      return await fn();
+    } finally {
+      setShipLoading((s) => ({ ...s, [id]: false }));
+    }
+  };
+
+  const apiJson = async (url, options = {}) => {
+    const res = await fetch(url, {
+      ...options,
+      headers: {
+        Accept: "application/json",
+        ...(options.headers || {}),
+      },
+    });
+    const text = await res.text();
+    let data = null;
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch {
+      data = null;
+    }
+    if (!res.ok) {
+      throw new Error(data?.error || data?.message || "Request failed");
+    }
+    return data;
+  };
+
+  const fetchCouriers = async (id) => {
+    await withShipLoading(id, async () => {
+      const data = await apiJson(`${API_BASE}/api/shipping/orders/${id}/shiprocket/couriers`);
+      setCouriersByOrder((prev) => ({ ...prev, [id]: data }));
+      flashNotice(data?.couriers?.length ? "Courier options loaded" : "No courier options available");
+    });
+  };
+
+  const createShipment = async (id) => {
+    await withShipLoading(id, async () => {
+      const data = await apiJson(`${API_BASE}/api/shipping/orders/${id}/shiprocket/create`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      setOrderPatch(id, {
+        shiprocket_shipment_id: data?.shipment_id || null,
+        shiprocket_order_id: data?.shiprocket_order_id || null,
+        shiprocket_last_status: "CREATED",
+      });
+      flashNotice(data?.already_created ? "Shipment already exists" : "Shipment created in Shiprocket");
+    });
+  };
+
+  const assignRecommendedAwb = async (id) => {
+    await withShipLoading(id, async () => {
+      const data = await apiJson(`${API_BASE}/api/shipping/orders/${id}/shiprocket/rate-assign`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      setOrderPatch(id, {
+        shiprocket_awb: data?.awb || null,
+        shiprocket_courier: data?.courier?.courier_name || null,
+        shiprocket_last_status: "AWB_ASSIGNED",
+      });
+      flashNotice(data?.awb ? "AWB assigned successfully" : "AWB assigned");
+    });
+  };
+
+  const generatePickup = async (id) => {
+    await withShipLoading(id, async () => {
+      const data = await apiJson(`${API_BASE}/api/shipping/orders/${id}/shiprocket/pickup`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      setOrderPatch(id, {
+        shiprocket_pickup_status: data?.pickup_status || "PICKUP_REQUESTED",
+        shiprocket_last_status: "PICKUP_REQUESTED",
+      });
+      flashNotice("Pickup requested");
+    });
+  };
+
+  const generateManifest = async (id) => {
+    await withShipLoading(id, async () => {
+      const data = await apiJson(`${API_BASE}/api/shipping/orders/${id}/shiprocket/manifest`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      setOrderPatch(id, {
+        shiprocket_manifest_url: data?.manifest_url || null,
+        shiprocket_last_status: "MANIFEST_CREATED",
+      });
+      flashNotice(data?.manifest_url ? "Manifest generated" : "Manifest request completed");
+    });
+  };
+
+  const generateLabel = async (id) => {
+    await withShipLoading(id, async () => {
+      const data = await apiJson(`${API_BASE}/api/shipping/orders/${id}/shiprocket/label`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      setOrderPatch(id, {
+        shiprocket_label_url: data?.label_url || null,
+        shiprocket_last_status: "LABEL_CREATED",
+      });
+      flashNotice(data?.label_url ? "Label generated" : "Label request completed");
+    });
+  };
+
+  const trackShipment = async (id) => {
+    await withShipLoading(id, async () => {
+      const data = await apiJson(`${API_BASE}/api/tracking?orderId=${encodeURIComponent(id)}`);
+      setTrackingByOrder((prev) => ({ ...prev, [id]: data }));
+      setOrderPatch(id, {
+        shiprocket_last_status: data?.status || null,
+        shiprocket_awb: data?.awb || null,
+        shiprocket_courier: data?.courier || null,
+      });
+      flashNotice("Tracking updated");
+    });
+  };
 
   const toMoney = (minor, cur) => {
     const v = typeof minor === "number" ? minor : Number(minor || 0);
@@ -144,7 +292,7 @@ function Orders() {
   };
 
   const extractAddress = (order) => {
-    const a = order.shipping_address || order.address || order.shipping || order.customer_address || {};
+    const a = order.shipping_addr || order.shipping_address || order.address || order.shipping || order.customer_address || {};
     return {
       name: a.name || order.name || order.customer_name || "",
       line1: a.line1 || a.address1 || a.address_line1 || order.address_line1 || "",
@@ -226,19 +374,9 @@ function Orders() {
             }
           : o
       );
-      if (data?.emailSent && (data?.whatsappSent || data?.whatsapp?.sent)) {
-        setNotice("Email and WhatsApp invoice sent");
-      } else if (data?.emailSent) {
-        setNotice("Email sent to customer");
-      } else if (data?.whatsappSent || data?.whatsapp?.sent) {
-        setNotice("WhatsApp invoice sent");
-      } else if (typeof data?.emailSent !== "undefined" || typeof data?.whatsappSent !== "undefined" || data?.whatsapp) {
-        setNotice("Notification sending failed");
-      }
-      if (notice) setTimeout(() => setNotice(""), 3000);
+      flashNotice("Order completed");
     } catch (e) {
-      setNotice("Failed to mark completed");
-      setTimeout(() => setNotice(""), 3000);
+      flashNotice("Failed to mark completed");
     } finally {
       setSaving((s) => ({ ...s, [id]: false }));
     }
@@ -253,19 +391,13 @@ function Orders() {
       setSelectedOrder((o) =>
         o && o.id === id ? { ...o, local_status: "Accepted", decision_status: "Accepted" } : o
       );
-      if (data?.emailSent && (data?.whatsappSent || data?.whatsapp?.sent)) {
-        setNotice("Email and WhatsApp invoice sent");
-      } else if (data?.emailSent) {
-        setNotice("Email sent to customer");
-      } else if (data?.whatsappSent || data?.whatsapp?.sent) {
-        setNotice("WhatsApp invoice sent");
-      } else if (typeof data?.emailSent !== "undefined" || typeof data?.whatsappSent !== "undefined" || data?.whatsapp) {
-        setNotice(data?.emailError ? `Notification failed: ${data.emailError}` : "Notification failed");
+      if (data?.emailSent) {
+        flashNotice("Email sent to customer");
+      } else if (typeof data?.emailSent !== "undefined") {
+        flashNotice(data?.emailError ? `Email failed: ${data.emailError}` : "Order accepted");
       }
-      setTimeout(() => setNotice(""), 3000);
     } else {
-      setNotice("Failed to accept order");
-      setTimeout(() => setNotice(""), 3000);
+      flashNotice("Failed to accept order");
     }
     setSaving((s) => ({ ...s, [id]: false }));
   };
@@ -280,8 +412,7 @@ function Orders() {
         o && o.id === id ? { ...o, local_status: "Declined", decision_status: "Declined" } : o
       );
     } else {
-      setNotice("Failed to decline order");
-      setTimeout(() => setNotice(""), 3000);
+      flashNotice("Failed to decline order");
     }
     setSaving((s) => ({ ...s, [id]: false }));
   };
@@ -334,6 +465,10 @@ function Orders() {
   const toggleFilter = (key) => {
     setStatusFilters((f) => ({ ...f, [key]: !f[key] }));
   };
+
+  const currentCouriers = selectedOrder ? couriersByOrder[selectedOrder.id]?.couriers || [] : [];
+  const currentTracking = selectedOrder ? trackingByOrder[selectedOrder.id] || null : null;
+  const canUseShipping = selectedOrder && (selectedOrder.decision_status === "Accepted" || decisions[selectedOrder.id] === "Accepted");
 
   return (
     <div className="orders-root">
@@ -480,6 +615,26 @@ function Orders() {
                   <span>Payment</span>
                   <strong>{displayPayment(selectedOrder)}</strong>
                 </div>
+                <div className="summary-row">
+                  <span>Shiprocket Status</span>
+                  <strong>{selectedOrder.shiprocket_last_status || "Not created"}</strong>
+                </div>
+                <div className="summary-row">
+                  <span>Shipment ID</span>
+                  <strong>{selectedOrder.shiprocket_shipment_id || "-"}</strong>
+                </div>
+                <div className="summary-row">
+                  <span>AWB</span>
+                  <strong>{selectedOrder.shiprocket_awb || "-"}</strong>
+                </div>
+                <div className="summary-row">
+                  <span>Courier</span>
+                  <strong>{selectedOrder.shiprocket_courier || "-"}</strong>
+                </div>
+                <div className="summary-row">
+                  <span>Pickup</span>
+                  <strong>{selectedOrder.shiprocket_pickup_status || "-"}</strong>
+                </div>
               </div>
 
               <div className="address-block">
@@ -503,6 +658,131 @@ function Orders() {
                     );
                   })()}
                 </div>
+
+                <div className="ship-actions-block">
+                  <div className="block-title">Shiprocket Actions</div>
+                  {!canUseShipping ? (
+                    <div className="shiprocket-note">Accept the order first to use shipping actions.</div>
+                  ) : (
+                    <>
+                      <div className="ship-actions-grid">
+                        <button
+                          className="btn ship"
+                          onClick={() => fetchCouriers(selectedOrder.id)}
+                          disabled={!!shipLoading[selectedOrder.id]}
+                        >
+                          {shipLoading[selectedOrder.id] ? "Please wait..." : "Check Couriers"}
+                        </button>
+                        <button
+                          className="btn ship"
+                          onClick={() => createShipment(selectedOrder.id)}
+                          disabled={!!shipLoading[selectedOrder.id]}
+                        >
+                          {shipLoading[selectedOrder.id] ? "Please wait..." : "Create Shipment"}
+                        </button>
+                        <button
+                          className="btn ship"
+                          onClick={() => assignRecommendedAwb(selectedOrder.id)}
+                          disabled={!!shipLoading[selectedOrder.id] || !selectedOrder.shiprocket_shipment_id}
+                        >
+                          {shipLoading[selectedOrder.id] ? "Please wait..." : "Assign Recommended AWB"}
+                        </button>
+                        <button
+                          className="btn ship"
+                          onClick={() => generatePickup(selectedOrder.id)}
+                          disabled={!!shipLoading[selectedOrder.id] || !selectedOrder.shiprocket_shipment_id}
+                        >
+                          {shipLoading[selectedOrder.id] ? "Please wait..." : "Generate Pickup"}
+                        </button>
+                        <button
+                          className="btn ship"
+                          onClick={() => generateManifest(selectedOrder.id)}
+                          disabled={!!shipLoading[selectedOrder.id] || !selectedOrder.shiprocket_shipment_id}
+                        >
+                          {shipLoading[selectedOrder.id] ? "Please wait..." : "Generate Manifest"}
+                        </button>
+                        <button
+                          className="btn ship"
+                          onClick={() => generateLabel(selectedOrder.id)}
+                          disabled={!!shipLoading[selectedOrder.id] || !selectedOrder.shiprocket_shipment_id}
+                        >
+                          {shipLoading[selectedOrder.id] ? "Please wait..." : "Generate Label"}
+                        </button>
+                        <button
+                          className="btn ship"
+                          onClick={() => trackShipment(selectedOrder.id)}
+                          disabled={!!shipLoading[selectedOrder.id] || (!selectedOrder.shiprocket_awb && !selectedOrder.shiprocket_shipment_id)}
+                        >
+                          {shipLoading[selectedOrder.id] ? "Please wait..." : "Track Shipment"}
+                        </button>
+                      </div>
+
+                      {selectedOrder.shiprocket_label_url ? (
+                        <a
+                          className="shiprocket-link"
+                          href={selectedOrder.shiprocket_label_url}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          Open Label
+                        </a>
+                      ) : null}
+
+                      {selectedOrder.shiprocket_manifest_url ? (
+                        <a
+                          className="shiprocket-link"
+                          href={selectedOrder.shiprocket_manifest_url}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          Open Manifest
+                        </a>
+                      ) : null}
+                    </>
+                  )}
+                </div>
+
+                {currentCouriers.length > 0 ? (
+                  <div className="courier-list">
+                    <div className="block-title">Available Couriers</div>
+                    {currentCouriers.slice(0, 5).map((courier, index) => (
+                      <div className="courier-card" key={`${courier.courier_company_id || courier.courier_name}-${index}`}>
+                        <div className="courier-name">{courier.courier_name || "Courier"}</div>
+                        <div className="courier-meta">
+                          <span>Rate: ₹{Number(courier.rate || 0).toFixed(2)}</span>
+                          <span>ETD: {courier.estimated_delivery_days || "-"}</span>
+                          <span>COD: {courier.cod ? "Yes" : "No"}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+
+                {currentTracking ? (
+                  <div className="tracking-list">
+                    <div className="block-title">Tracking</div>
+                    <div className="tracking-summary">
+                      <span>Status: {currentTracking.status || "-"}</span>
+                      <span>AWB: {currentTracking.awb || "-"}</span>
+                      <span>Courier: {currentTracking.courier || "-"}</span>
+                    </div>
+                    <div className="tracking-activities">
+                      {(currentTracking.checkpoints || []).length > 0 ? (
+                        currentTracking.checkpoints.map((point, index) => (
+                          <div className="tracking-card" key={`${point.date || "date"}-${index}`}>
+                            <div className="tracking-activity">{point.activity || "-"}</div>
+                            <div className="tracking-meta">
+                              <span>{point.location || "-"}</span>
+                              <span>{point.date || "-"}</span>
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="shiprocket-note">No tracking events yet.</div>
+                      )}
+                    </div>
+                  </div>
+                ) : null}
               </div>
 
               <div className="items-block">

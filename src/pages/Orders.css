@@ -206,7 +206,7 @@ tr:hover {
 }
 
 .modal {
-  width: min(960px, 96vw);
+  width: min(1100px, 96vw);
   max-height: 88vh;
   overflow: hidden;
   border-radius: 20px;
@@ -251,7 +251,7 @@ tr:hover {
   padding: 18px;
   overflow-y: auto;
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr 1.15fr;
   gap: 18px;
 }
 
@@ -271,6 +271,7 @@ tr:hover {
 .summary-row {
   display: flex;
   justify-content: space-between;
+  gap: 10px;
   padding: 8px 0;
   color: #c8f5ee;
   border-bottom: 1px dashed rgba(255, 255, 255, 0.08);
@@ -426,6 +427,67 @@ tr:hover {
   grid-column: span 2;
 }
 
+.ship-actions-block {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.ship-actions-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.shiprocket-note {
+  color: #bdeee6;
+  font-size: 14px;
+}
+
+.courier-list,
+.tracking-list {
+  margin-top: 16px;
+}
+
+.courier-card,
+.tracking-card {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 10px 12px;
+  margin-top: 8px;
+}
+
+.courier-name,
+.tracking-activity {
+  color: #e0f7fa;
+  font-weight: 700;
+}
+
+.courier-meta,
+.tracking-meta,
+.tracking-summary {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  color: #bdeee6;
+  font-size: 13px;
+  margin-top: 6px;
+}
+
+.shiprocket-link {
+  display: inline-flex;
+  margin-top: 12px;
+  margin-right: 12px;
+  color: #0fffc1;
+  text-decoration: none;
+  font-weight: 700;
+}
+
+.shiprocket-link:hover {
+  text-decoration: underline;
+}
+
 @media (max-width: 520px) {
   .spec-grid {
     grid-template-columns: 1fr;
@@ -433,6 +495,10 @@ tr:hover {
 
   .spec-span-2 {
     grid-column: span 1;
+  }
+
+  .ship-actions-grid {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -525,6 +591,11 @@ tr:hover {
 .btn.complete {
   background: linear-gradient(90deg, #66e0ff, #00ffcc);
   color: #0b1a23;
+}
+
+.btn.ship {
+  background: linear-gradient(90deg, #8a7dff, #6b5cff);
+  color: #ffffff;
 }
 
 .btn:disabled {
